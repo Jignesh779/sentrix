@@ -17,7 +17,6 @@ services:
   - type: web
     name: sentrix-frontend
     runtime: static
-    region: singapore
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     rootDir: frontend
