@@ -15,7 +15,7 @@ services:
         value: 3.11.0
 
   # ── Sentrix Frontend (React/Vite) ──
-  - type: static
+  - type: static_site
     name: sentrix-frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
