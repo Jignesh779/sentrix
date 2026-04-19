@@ -23,9 +23,9 @@ services:
     rootDir: frontend
     envVars:
       - key: VITE_API_URL
-        value: https://sentrix-backend.onrender.com
+        value: https://sentrix-backend-qvv8.onrender.com
       - key: VITE_WS_URL
-        value: wss://sentrix-backend.onrender.com
+        value: wss://sentrix-backend-qvv8.onrender.com
     routes:
       - type: rewrite
         source: /*
