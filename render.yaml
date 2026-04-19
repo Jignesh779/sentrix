@@ -2,8 +2,9 @@ services:
   # ── Sentrix Backend (FastAPI) ──
   - type: web
     name: sentrix-backend
+    plan: free
     runtime: python
-    region: singapore
+    region: frankfurt
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     rootDir: backend
@@ -14,9 +15,8 @@ services:
         value: 3.11.0
 
   # ── Sentrix Frontend (React/Vite) ──
-  - type: web
+  - type: static
     name: sentrix-frontend
-    runtime: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     rootDir: frontend
