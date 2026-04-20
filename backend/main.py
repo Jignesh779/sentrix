@@ -186,10 +186,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Production: single-origin deployment (CORS not strictly needed)
-# Keep permissive for local dev and external API consumers
-_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
-ALLOWED_ORIGINS = ["*"] if _raw_origins == "*" else [o.strip() for o in _raw_origins.split(",")]
+# Production: set ALLOWED_ORIGINS="https://your-app.onrender.com" in env
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
