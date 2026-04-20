@@ -130,28 +130,6 @@ export default function DashboardLogin({ onLogin }) {
         </form>
 
         {/* Demo credentials hint */}
-        <div style={{
-          marginTop: 24, padding: '16px',
-          background: 'rgba(255,255,255,0.5)',
-          border: '1px solid var(--sy-border)',
-          borderRadius: 16, textAlign: 'center',
-        }}>
-          <p style={{ fontSize: 11, color: 'var(--sy-text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
-            Demo Access Details
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11, color: 'var(--sy-text-muted)' }}>ID</span>
-              <code style={{ fontSize: 13, color: 'var(--sy-primary-dark)', fontWeight: 700, background: 'var(--sy-primary-lighter)', padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(214, 109, 81, 0.15)' }}>admin</code>
-            </div>
-            <div style={{ width: 1, background: 'var(--sy-border)' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11, color: 'var(--sy-text-muted)' }}>PASS</span>
-              <code style={{ fontSize: 13, color: 'var(--sy-primary-dark)', fontWeight: 700, background: 'var(--sy-primary-lighter)', padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(214, 109, 81, 0.15)' }}>sentrix2025</code>
-            </div>
-          </div>
-        </div>
-
         {/* Footer */}
         <p style={{
           textAlign: 'center', fontSize: 11, color: 'var(--sy-text-muted)',

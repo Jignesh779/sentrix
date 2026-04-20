@@ -17,7 +17,7 @@
 | 🌍 **Tourist App** | **[sentrix-frontend.onrender.com](https://sentrix-frontend.onrender.com)** | Register → Get Digital ID → Start Journey → SOS |
 | 🛡️ **Command Center** | **[sentrix-frontend.onrender.com/dashboard](https://sentrix-frontend.onrender.com/dashboard)** | Authority dashboard with live alerts & dispatch |
 
-> **🔑 Dashboard Login:** Officer ID: `admin` · Passcode: `sentrix2025`
+> **🔑 Dashboard Login:** Access requires authorized officer credentials.
 
 ---
 
@@ -342,7 +342,7 @@ npm run dev
 | Page | URL | Credentials |
 |------|-----|-------------|
 | Tourist App | `http://localhost:5173/tourist` | — |
-| Dashboard | `http://localhost:5173/dashboard` | `admin` / `sentrix2025` |
+| Dashboard | `http://localhost:5173/dashboard` | Restricted Access |
 | ID Verify | `http://localhost:5173/verify?hash={id_hash}` | — |
 
 ---
@@ -354,7 +354,7 @@ npm run dev
 2. Fill details → Enter any 6-digit OTP → **Digital ID** created with QR code
 3. Click **"Start Journey"** → Live map with real GPS + risk score
 4. Press the red **SOS** button → Watch all 4 rescue layers activate
-5. Open **Dashboard** in another tab → Login with `admin` / `sentrix2025`
+5. Open **Dashboard** in another tab → Login with authorized credentials
 6. See the SOS alert appear instantly → Click **"Deploy Police Unit"**
 7. Go back to Tourist tab → Shows **"Help is on the way!"** in real-time
 
