@@ -216,8 +216,8 @@ export default function SOSHistory() {
                   </div>
                   <div style={{ padding: 14, background: '#f8fafc', borderRadius: 12 }}>
                     <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Battery</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: alert.battery_level < 15 ? '#dc2626' : '#0f172a' }}>
-                      🔋 {alert.battery_level}%
+                    <span style={{ fontSize: 13, fontWeight: 700, color: alert.battery_level != null && alert.battery_level < 15 ? '#dc2626' : '#0f172a' }}>
+                      🔋 {alert.battery_level != null ? `${alert.battery_level}%` : 'N/A'}
                     </span>
                   </div>
                   <div style={{ padding: 14, background: '#f8fafc', borderRadius: 12 }}>

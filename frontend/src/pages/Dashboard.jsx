@@ -378,7 +378,7 @@ export default function Dashboard() {
                         <Popup className="sy-popup">
                           <div style={{ padding: '4px 0' }}>
                             <strong style={{ fontSize: 14 }}>🚨 {alert.tourist_name}</strong><br />
-                            <span style={{ color: 'var(--sy-text-secondary)', fontSize: 12 }}>{alert.nationality} | 🔋 {alert.battery_level}%</span><br />
+                            <span style={{ color: 'var(--sy-text-secondary)', fontSize: 12 }}>{alert.nationality} | 🔋 {alert.battery_level != null ? `${alert.battery_level}%` : 'N/A'}</span><br />
                             <div style={{ marginTop: 6, display: 'inline-block', padding: '2px 6px', background: 'var(--sy-red-light)', color: 'var(--sy-red)', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
                               RISK: {alert.risk_score}
                             </div>
@@ -555,7 +555,7 @@ export default function Dashboard() {
                     </div>
                     
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24, padding: '20px', background: '#f8fafc', borderRadius: '12px', border: '1px solid var(--sy-border)' }}>
-                      <div className="sy-stat"><span className="sy-stat-label">Battery Level</span><span style={{ fontWeight: 800, fontSize: 18, color: alert.battery_level < 15 ? 'var(--sy-red)' : 'var(--sy-text)' }}>🔋 {alert.battery_level}%</span></div>
+                      <div className="sy-stat"><span className="sy-stat-label">Battery Level</span><span style={{ fontWeight: 800, fontSize: 18, color: alert.battery_level != null && alert.battery_level < 15 ? 'var(--sy-red)' : 'var(--sy-text)' }}>🔋 {alert.battery_level != null ? `${alert.battery_level}%` : 'N/A'}</span></div>
                       <div className="sy-stat">
                         <span className="sy-stat-label">Lat / Lng Data Source</span>
                         <span style={{ fontWeight: 700, fontSize: 14, color: alert.location_source?.includes('GSM') ? '#b45309' : '#0f172a' }}>

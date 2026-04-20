@@ -422,7 +422,7 @@ export default function TravelView({ lang }) {
         timestamp: sosPayload.queued_at,
         location: { lat: targetPos.lat, lng: targetPos.lng },
         location_source: locationSource,
-        battery_level: Math.round(battery),
+        battery_level: battery ?? 50,
         dispatched_units: [],
         message: 'Network offline. SOS queued — will auto-transmit when WiFi/data returns.',
       };
@@ -480,7 +480,7 @@ export default function TravelView({ lang }) {
         timestamp: sosPayload.queued_at,
         location: { lat: targetPos.lat, lng: targetPos.lng },
         location_source: locationSource,
-        battery_level: Math.round(battery),
+        battery_level: battery ?? 50,
         dispatched_units: [],
         message: 'Network unavailable. SOS is queued and will auto-send — no action needed.',
       };
