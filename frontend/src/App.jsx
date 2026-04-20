@@ -8,7 +8,6 @@ import TravelView from './pages/TravelView';
 import SOSConfirmation from './pages/SOSConfirmation';
 import SOSHistory from './pages/SOSHistory';
 import Dashboard from './pages/Dashboard';
-import DashboardLogin from './pages/DashboardLogin';
 import VerifyID from './pages/VerifyID';
 
 import './index.css';
@@ -55,26 +54,6 @@ function TitleManager() {
   return null;
 }
 
-/**
- * Auth gate for the Dashboard — checks sessionStorage for login.
- * If not logged in, shows the DashboardLogin page.
- */
-function DashboardGate() {
-  const [authed, setAuthed] = useState(() => {
-    try {
-      return !!sessionStorage.getItem('sy_auth');
-    } catch {
-      return false;
-    }
-  });
-
-  if (!authed) {
-    return <DashboardLogin onLogin={() => setAuthed(true)} />;
-  }
-
-  return <Dashboard />;
-}
-
 export default function App() {
   const [lang, setLang] = useState('en');
   const [, setRegistrationData] = useState(null);
@@ -93,9 +72,9 @@ export default function App() {
         <Route path="/tourist/sos-history" element={<SOSHistory lang={lang} />} />
         <Route path="/verify" element={<VerifyID />} />
 
-        {/* Authority Dashboard — protected by login */}
-        <Route path="/dashboard" element={<DashboardGate />} />
-        <Route path="/dashboard/*" element={<DashboardGate />} />
+        {/* Authority Dashboard — direct access (login removed for hackathon) */}
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard/*" element={<Dashboard />} />
       </Routes>
     </BrowserRouter>
   );
