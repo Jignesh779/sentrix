@@ -533,10 +533,12 @@ export default function TravelView({ lang }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: 'var(--sy-surface)', borderBottom: '1px solid var(--sy-border)', zIndex: 10 }}>
         {/* Left: Brand + Name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20 }}>🛡️</span>
+          <span style={{ display: 'flex', alignItems: 'center' }}>
+            <img src="/favicon.svg" alt="Sentrix" style={{ width: 28, height: 28 }} />
+          </span>
           <div>
-            <h2 style={{ fontSize: 15, fontWeight: 700 }}>Sentrix</h2>
-            <p style={{ fontSize: 11, color: 'var(--sy-text-muted)' }}>{tourist?.name || 'Tourist'}</p>
+            <h2 style={{ fontSize: 17, fontWeight: 800, letterSpacing: '-0.02em', margin: 0, color: 'var(--sy-text)' }}>Sentrix</h2>
+            <p style={{ fontSize: 12, color: 'var(--sy-text-muted)', fontWeight: 500, margin: 0 }}>{tourist?.name || 'Tourist'}</p>
           </div>
 
           {/* Risk Score — right next to brand for immediate visibility */}
