@@ -132,37 +132,6 @@ Sentrix comes pre-configured with geometric mapping for **12 real-world high-ris
 | **Mapping & Live Data** | Leaflet.js, OpenWeatherMap API |
 | **Real-time Comms** | WebSockets (Bi-directional) |
 
----
-
-## 💻 Developer Setup & Running Locally
-
-### 1. Backend Server
-```bash
-# Clone and enter the backend directory
-cd backend
-
-# Create virtual env and install dependencies
-python -m venv venv
-source venv/bin/activate  # (On Windows use `venv\Scripts\activate`)
-pip install -r requirements.txt
-
-# Start the optimized API server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-> Explore the auto-generated Swagger documentation at `http://localhost:8000/docs`
-
-### 2. Frontend Interface
-```bash
-# Enter the frontend directory
-cd frontend
-
-# Install dependencies and start the dev server
-npm install
-npm run dev
-```
-> The application will automatically open on `http://localhost:5173`
-
----
 
 ## ✅ SIH 2025 Compliance Matrix
 
