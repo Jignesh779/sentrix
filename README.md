@@ -12,7 +12,6 @@
 
 [![Sentrix App](https://img.shields.io/badge/Tourist_App-Deployed-047857?style=for-the-badge&logo=vercel)](https://sentrix-frontend.onrender.com) 
 [![Dashboard](https://img.shields.io/badge/Command_Center-Live-0f172a?style=for-the-badge)](https://sentrix-frontend.onrender.com/dashboard)
-[![API](https://img.shields.io/badge/FastAPI_Backend-Online-009688?style=for-the-badge&logo=fastapi)](https://sentrix-backend-qvv8.onrender.com/docs)
 [![Blockchain](https://img.shields.io/badge/Security-SHA--256_Blockchain-7c3aed?style=for-the-badge)](#-blockchain-audit-trail)
 
 </div>
