@@ -57,7 +57,7 @@ export default function TravelView({ lang }) {
   const [locError, setLocError] = useState(null);
   const [pos, setPos] = useState(null);
   const [accuracy, setAccuracy] = useState(null);
-  const [battery, setBattery] = useState(100);
+  const [battery, setBattery] = useState(null);
   const [pendingSOSCount, setPendingSOSCount] = useState(0);
   const [syncStatus, setSyncStatus] = useState(null); // null | 'syncing' | 'synced'
   const [networkOnline, setNetworkOnline] = useState(navigator.onLine);
@@ -79,14 +79,20 @@ export default function TravelView({ lang }) {
 
   // ── Real-Time Battery Sensing ──
   useEffect(() => {
+    let batteryRef = null;
+    const updateBattery = () => {
+      if (batteryRef) setBattery(Math.round(batteryRef.level * 100));
+    };
     if (navigator.getBattery) {
       navigator.getBattery().then(bat => {
-        setBattery(Math.round(bat.level * 100));
-        bat.addEventListener('levelchange', () => {
-          setBattery(Math.round(bat.level * 100));
-        });
-      });
+        batteryRef = bat;
+        updateBattery();
+        bat.addEventListener('levelchange', updateBattery);
+      }).catch(() => {});
     }
+    return () => {
+      if (batteryRef) batteryRef.removeEventListener('levelchange', updateBattery);
+    };
   }, []);
 
   // ── Shake-to-SOS Detection (Panic Gesture) ──
@@ -152,7 +158,7 @@ export default function TravelView({ lang }) {
             tourist_id: tourist?.tourist_id,
             latitude: targetPos.lat,
             longitude: targetPos.lng,
-            battery_level: Math.round(battery),
+            battery_level: battery ?? 50,
             triggered_via: 'shake_gesture',
             location_source: gpsOn ? 'GPS Direct (Shake-to-SOS)' : 'Last Known Position (Shake-to-SOS)',
           };
@@ -322,7 +328,7 @@ export default function TravelView({ lang }) {
   const fetchRisk = useCallback(() => {
     if (!pos) return;
     const tid = tourist?.tourist_id ? `&tourist_id=${tourist.tourist_id}` : '';
-    fetch(`${API}/api/risk-score?lat=${pos.lat}&lon=${pos.lng}&battery=${battery}${tid}`)
+    fetch(`${API}/api/risk-score?lat=${pos.lat}&lon=${pos.lng}&battery=${battery ?? 50}${tid}`)
       .then(r => r.json())
       .then(setRisk)
       .catch(() => {});
@@ -361,7 +367,7 @@ export default function TravelView({ lang }) {
       tourist_id: tourist.tourist_id,
       latitude: targetPos.lat,
       longitude: targetPos.lng,
-      battery_level: Math.round(battery),
+      battery_level: battery ?? 50,
       triggered_via: gpsOn ? 'button' : 'sms_mesh_fallback',
       location_source: locationSource,
       queued_at: new Date().toISOString(),
@@ -383,7 +389,7 @@ export default function TravelView({ lang }) {
         timestamp: sosPayload.queued_at,
         location: { lat: targetPos.lat, lng: targetPos.lng },
         location_source: locationSource,
-        battery_level: Math.round(battery),
+        battery_level: battery ?? 50,
         dispatched_units: [],
         message: 'SOS queued. Will transmit automatically — no action needed.',
       };
@@ -554,8 +560,8 @@ export default function TravelView({ lang }) {
           </button>
 
           {/* Battery */}
-          <span className="sy-badge" style={{ background: battery < 20 ? 'var(--sy-red-light)' : 'var(--sy-border-light)', color: battery < 20 ? 'var(--sy-red)' : 'var(--sy-text-secondary)', fontSize: 11, padding: '5px 10px' }}>
-            🔋 {battery}%
+          <span className="sy-badge" style={{ background: battery !== null && battery < 20 ? 'var(--sy-red-light)' : 'var(--sy-border-light)', color: battery !== null && battery < 20 ? 'var(--sy-red)' : 'var(--sy-text-secondary)', fontSize: 11, padding: '5px 10px' }}>
+            🔋 {battery !== null ? `${battery}%` : 'N/A'}
           </span>
 
           {/* Weather */}
@@ -740,7 +746,7 @@ export default function TravelView({ lang }) {
                   Lng: {pos.lng.toFixed(6)}<br />
                   GPS Accuracy: ±{accuracy ? Math.round(accuracy) : '?'}m<br />
                   Risk: {risk?.risk_score || '…'}/100<br />
-                  Battery: {battery}%
+                  Battery: {battery !== null ? `${battery}%` : 'N/A'}
                 </Popup>
               </Marker>
             </>
