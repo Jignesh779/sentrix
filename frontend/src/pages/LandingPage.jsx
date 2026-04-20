@@ -47,11 +47,10 @@ export default function LandingPage({ lang, onLangChange }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
             width: 44, height: 44, borderRadius: 12,
-            background: 'var(--sy-primary)', display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 8px 16px rgba(4,120,87,0.25)'
+            display: 'flex',
+            alignItems: 'center', justifyContent: 'center'
           }}>
-            <span style={{ fontSize: 24 }}>🛡️</span>
+            <img src="/favicon.svg" alt="Sentrix" style={{ width: 44, height: 44 }} />
           </div>
           <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--sy-text)' }}>
             Sentrix

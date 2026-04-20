@@ -187,8 +187,10 @@ export default function Dashboard() {
           onClick={toggleSidebar}
           title="Toggle Sidebar"
         >
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--sy-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(4,120,87,0.5)', flexShrink: 0, transition: 'all 0.3s' }}>
-            <span style={{ fontSize: 20 }}>{isSidebarOpen ? '🛡️' : '☰'}</span>
+          <div style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.3s' }}>
+            <span style={{ fontSize: 20, display: 'flex' }}>
+              {isSidebarOpen ? <img src="/favicon.svg" alt="Sentrix" style={{ width: 36, height: 36 }} /> : '☰'}
+            </span>
           </div>
           <div style={{ opacity: isSidebarOpen ? 1 : 0, transition: 'opacity 0.2s', whiteSpace: 'nowrap' }}>
             <h2 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', margin: 0, color: 'white' }}>Sentrix</h2>
