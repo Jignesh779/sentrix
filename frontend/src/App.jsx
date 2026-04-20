@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
-import RoleSelect from './pages/RoleSelect';
 import LandingPage from './pages/LandingPage';
 import Registration from './pages/Registration';
 import DigitalIDPage from './pages/DigitalIDPage';
@@ -44,9 +43,7 @@ function TitleManager() {
   const location = useLocation();
 
   useEffect(() => {
-    if (location.pathname === '/') {
-      document.title = 'Sentrix | Tourist Safety & Incident Response';
-    } else if (location.pathname.startsWith('/dashboard')) {
+    if (location.pathname.startsWith('/dashboard')) {
       document.title = 'Sentrix | Command Center';
     } else if (location.pathname.startsWith('/verify')) {
       document.title = 'Sentrix | ID Verification';
@@ -86,10 +83,8 @@ export default function App() {
     <BrowserRouter>
       <TitleManager />
       <Routes>
-        {/* Role Selection Home */}
-        <Route path="/" element={<RoleSelect />} />
-
         {/* Tourist-facing PWA */}
+        <Route path="/" element={<Navigate to="/tourist" replace />} />
         <Route path="/tourist" element={<LandingPage lang={lang} onLangChange={setLang} />} />
         <Route path="/tourist/register" element={<Registration lang={lang} onRegistered={setRegistrationData} />} />
         <Route path="/tourist/digital-id" element={<DigitalIDPage lang={lang} />} />
