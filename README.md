@@ -16,8 +16,6 @@
 |----------|-----|-------------|
 | 🌍 **Tourist App** | **[sentrix-frontend.onrender.com](https://sentrix-frontend.onrender.com)** | Register → Get Digital ID → Start Journey → SOS |
 | 🛡️ **Command Center** | **[sentrix-frontend.onrender.com/dashboard](https://sentrix-frontend.onrender.com/dashboard)** | Authority dashboard with live alerts & dispatch |
-| ⚙️ **API Server** | **[sentrix-backend-qvv8.onrender.com](https://sentrix-backend-qvv8.onrender.com)** | FastAPI backend with auto-docs |
-| 📖 **API Docs** | **[sentrix-backend-qvv8.onrender.com/docs](https://sentrix-backend-qvv8.onrender.com/docs)** | Interactive Swagger API documentation |
 
 > **🔑 Dashboard Login:** Officer ID: `admin` · Passcode: `sentrix2025`
 
