@@ -9,6 +9,16 @@ Sentrix is an intelligent tourist safety platform that protects travelers across
 ![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![Blockchain](https://img.shields.io/badge/Blockchain-Secured-7c3aed?style=for-the-badge)
 
+### 🌐 Live Demo
+
+| Service | Link |
+|---------|------|
+| **🌍 Tourist App** | [https://sentrix-frontend.onrender.com](https://sentrix-frontend.onrender.com) |
+| **🛡️ Authority Dashboard** | [https://sentrix-frontend.onrender.com/dashboard](https://sentrix-frontend.onrender.com/dashboard) |
+| **⚙️ Backend API** | [https://sentrix-backend-qvv8.onrender.com](https://sentrix-backend-qvv8.onrender.com) |
+
+> **Dashboard Login:** Officer ID: `admin` · Passcode: `sentrix2025`
+
 ---
 
 ## 🤔 The Problem We're Solving
