@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = import.meta.env.VITE_API_URL || '';
 
 export default function Registration({ lang, onRegistered }) {
   const navigate = useNavigate();

@@ -6,7 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { t } from '../i18n';
 import 'leaflet/dist/leaflet.css';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = import.meta.env.VITE_API_URL || '';
 
 // Fix Leaflet default marker icon
 delete L.Icon.Default.prototype._getIconUrl;
