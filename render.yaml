@@ -14,7 +14,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: DATABASE_URL
-        sync: false  # Set manually in Render dashboard with your Neon connection string
+        value: postgresql://neondb_owner:npg_2Yw7ACOpaKWG@ep-hidden-firefly-anp2zrzr.c-6.us-east-1.aws.neon.tech/neondb?sslmode=require
 
   # ── Sentrix Frontend (React/Vite) ──
   - type: web
