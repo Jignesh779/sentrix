@@ -10,7 +10,7 @@ services:
     rootDir: backend
     envVars:
       - key: ALLOWED_ORIGINS
-        value: https://sentrix-frontend.onrender.com
+        value: https://sentrix.onrender.com
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: DATABASE_URL
@@ -18,7 +18,7 @@ services:
 
   # ── Sentrix Frontend (React/Vite) ──
   - type: web
-    name: sentrix-frontend
+    name: sentrix
     runtime: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
