@@ -1,16 +1,13 @@
 """
-Sentrix — SQLite Database Layer
-Replaces the old JSON-file persistence with a proper SQLite database.
-Uses Python's built-in sqlite3 — no extra pip installs needed.
+Sentrix — Database Layer (PostgreSQL + SQLite fallback)
+Uses PostgreSQL (via psycopg2) when DATABASE_URL is set (production on Render),
+falls back to SQLite for local development.
 
 Tables:
   - tourists: all registered tourists (mirrors the Tourist Pydantic model)
   - alerts:   all SOS alerts (stored as JSON blobs for flexibility)
-
-On first startup, auto-migrates from data_registry.json if it exists.
 """
 
-import sqlite3
 import json
 import os
 from pathlib import Path
@@ -18,28 +15,86 @@ from typing import Optional
 
 from models import Tourist
 
-DB_PATH = Path(__file__).parent / "sentrix.db"
-JSON_DB_PATH = Path(__file__).parent / "data_registry.json"
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# ---------------------------------------------------------------------------
+# Connection abstraction — PostgreSQL or SQLite
+# ---------------------------------------------------------------------------
+
+_conn = None
 
 
-def get_connection() -> sqlite3.Connection:
-    """Get a SQLite connection with WAL mode for concurrent reads."""
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-# Global connection — reused across the app (single-threaded async is fine)
-_conn: Optional[sqlite3.Connection] = None
-
-
-def _get_conn() -> sqlite3.Connection:
+def _get_conn():
+    """Get or create a database connection (PostgreSQL or SQLite)."""
     global _conn
-    if _conn is None:
-        _conn = get_connection()
+    if _conn is not None:
+        return _conn
+
+    if DATABASE_URL:
+        import psycopg2
+        import psycopg2.extras
+        _conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+        _conn.autocommit = False
+        print(f"[DB] Connected to PostgreSQL (Neon).")
+    else:
+        import sqlite3
+        DB_PATH = Path(__file__).parent / "sentrix.db"
+        _conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+        _conn.execute("PRAGMA journal_mode=WAL")
+        _conn.execute("PRAGMA foreign_keys=ON")
+        _conn.row_factory = sqlite3.Row
+        print("[DB] Connected to local SQLite.")
+
     return _conn
+
+
+def _is_postgres() -> bool:
+    return DATABASE_URL is not None
+
+
+def _placeholder() -> str:
+    """Return the correct placeholder for the current DB engine."""
+    return "%s" if _is_postgres() else "?"
+
+
+def _execute(sql: str, params: tuple = ()):
+    """Execute a SQL statement with the correct placeholder style."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    return cur
+
+
+def _commit():
+    _get_conn().commit()
+
+
+def _fetchall(sql: str, params: tuple = ()):
+    """Execute and fetch all results as list of dicts."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    columns = [desc[0] for desc in cur.description] if cur.description else []
+    rows = cur.fetchall()
+    if _is_postgres():
+        return [dict(zip(columns, row)) for row in rows]
+    else:
+        return [dict(row) for row in rows]
+
+
+def _fetchone(sql: str, params: tuple = ()):
+    """Execute and fetch one result as dict."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    row = cur.fetchone()
+    if row is None:
+        return None
+    if _is_postgres():
+        columns = [desc[0] for desc in cur.description]
+        return dict(zip(columns, row))
+    else:
+        return dict(row)
 
 
 # ---------------------------------------------------------------------------
@@ -47,40 +102,68 @@ def _get_conn() -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 def init_db():
     """Create tables if they don't exist."""
+    p = _placeholder()
     conn = _get_conn()
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS tourists (
-            tourist_id   TEXT PRIMARY KEY,
-            data         TEXT NOT NULL,   -- JSON blob of Tourist model
-            created_at   TEXT DEFAULT (datetime('now'))
-        );
+    cur = conn.cursor()
 
-        CREATE TABLE IF NOT EXISTS alerts (
-            alert_id     TEXT PRIMARY KEY,
-            tourist_id   TEXT,
-            data         TEXT NOT NULL,   -- JSON blob of Alert dict
-            created_at   TEXT DEFAULT (datetime('now'))
-        );
+    if _is_postgres():
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tourists (
+                tourist_id   TEXT PRIMARY KEY,
+                data         TEXT NOT NULL,
+                created_at   TIMESTAMP DEFAULT NOW()
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS alerts (
+                alert_id     TEXT PRIMARY KEY,
+                tourist_id   TEXT,
+                data         TEXT NOT NULL,
+                created_at   TIMESTAMP DEFAULT NOW()
+            );
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alerts_tourist ON alerts(tourist_id);
+        """)
+    else:
+        cur.executescript("""
+            CREATE TABLE IF NOT EXISTS tourists (
+                tourist_id   TEXT PRIMARY KEY,
+                data         TEXT NOT NULL,
+                created_at   TEXT DEFAULT (datetime('now'))
+            );
 
-        CREATE INDEX IF NOT EXISTS idx_alerts_tourist ON alerts(tourist_id);
-    """)
-    conn.commit()
-    print("[DB] SQLite tables initialized.")
+            CREATE TABLE IF NOT EXISTS alerts (
+                alert_id     TEXT PRIMARY KEY,
+                tourist_id   TEXT,
+                data         TEXT NOT NULL,
+                created_at   TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_alerts_tourist ON alerts(tourist_id);
+        """)
+
+    _commit()
+    db_type = "PostgreSQL" if _is_postgres() else "SQLite"
+    print(f"[DB] {db_type} tables initialized.")
 
 
 # ---------------------------------------------------------------------------
-# JSON → SQLite Migration
+# JSON → DB Migration (local SQLite only)
 # ---------------------------------------------------------------------------
+JSON_DB_PATH = Path(__file__).parent / "data_registry.json"
+
+
 def migrate_from_json():
-    """One-time migration from old data_registry.json to SQLite."""
+    """One-time migration from old data_registry.json (local dev only)."""
+    if _is_postgres():
+        return  # No JSON migration needed for cloud DB
     if not JSON_DB_PATH.exists():
         return
 
-    conn = _get_conn()
-
-    # Check if DB already has data (migration already done)
-    row = conn.execute("SELECT COUNT(*) FROM tourists").fetchone()
-    if row[0] > 0:
+    p = _placeholder()
+    row = _fetchone("SELECT COUNT(*) as cnt FROM tourists")
+    if row and row["cnt"] > 0:
         return
 
     try:
@@ -92,21 +175,21 @@ def migrate_from_json():
 
         if "tourists" in data:
             for tid, tdata in data["tourists"].items():
-                conn.execute(
-                    "INSERT OR IGNORE INTO tourists (tourist_id, data) VALUES (?, ?)",
+                _execute(
+                    f"INSERT INTO tourists (tourist_id, data) VALUES ({p}, {p}) ON CONFLICT DO NOTHING",
                     (tid, json.dumps(tdata)),
                 )
                 tourist_count += 1
 
         if "alerts" in data:
             for aid, adata in data["alerts"].items():
-                conn.execute(
-                    "INSERT OR IGNORE INTO alerts (alert_id, tourist_id, data) VALUES (?, ?, ?)",
+                _execute(
+                    f"INSERT INTO alerts (alert_id, tourist_id, data) VALUES ({p}, {p}, {p}) ON CONFLICT DO NOTHING",
                     (aid, adata.get("tourist_id", ""), json.dumps(adata)),
                 )
                 alert_count += 1
 
-        conn.commit()
+        _commit()
 
         # Rename old JSON file as backup
         backup = JSON_DB_PATH.with_suffix(".json.bak")
@@ -124,18 +207,24 @@ def migrate_from_json():
 # ---------------------------------------------------------------------------
 def save_tourist(tourist: Tourist):
     """Insert or update a tourist record."""
-    conn = _get_conn()
-    conn.execute(
-        "INSERT OR REPLACE INTO tourists (tourist_id, data) VALUES (?, ?)",
-        (tourist.tourist_id, json.dumps(tourist.model_dump())),
-    )
-    conn.commit()
+    p = _placeholder()
+    if _is_postgres():
+        _execute(
+            f"INSERT INTO tourists (tourist_id, data) VALUES ({p}, {p}) "
+            f"ON CONFLICT (tourist_id) DO UPDATE SET data = EXCLUDED.data",
+            (tourist.tourist_id, json.dumps(tourist.model_dump())),
+        )
+    else:
+        _execute(
+            f"INSERT OR REPLACE INTO tourists (tourist_id, data) VALUES ({p}, {p})",
+            (tourist.tourist_id, json.dumps(tourist.model_dump())),
+        )
+    _commit()
 
 
 def load_all_tourists() -> dict[str, Tourist]:
     """Load all tourists into a dict keyed by tourist_id."""
-    conn = _get_conn()
-    rows = conn.execute("SELECT tourist_id, data FROM tourists").fetchall()
+    rows = _fetchall("SELECT tourist_id, data FROM tourists")
     result = {}
     for row in rows:
         try:
@@ -147,10 +236,8 @@ def load_all_tourists() -> dict[str, Tourist]:
 
 def get_tourist(tourist_id: str) -> Optional[Tourist]:
     """Get a single tourist by ID."""
-    conn = _get_conn()
-    row = conn.execute(
-        "SELECT data FROM tourists WHERE tourist_id = ?", (tourist_id,)
-    ).fetchone()
+    p = _placeholder()
+    row = _fetchone(f"SELECT data FROM tourists WHERE tourist_id = {p}", (tourist_id,))
     if row:
         return Tourist(**json.loads(row["data"]))
     return None
@@ -158,18 +245,16 @@ def get_tourist(tourist_id: str) -> Optional[Tourist]:
 
 def update_tourist_status(tourist_id: str, status: str):
     """Update just the status field of a tourist."""
-    conn = _get_conn()
-    row = conn.execute(
-        "SELECT data FROM tourists WHERE tourist_id = ?", (tourist_id,)
-    ).fetchone()
+    p = _placeholder()
+    row = _fetchone(f"SELECT data FROM tourists WHERE tourist_id = {p}", (tourist_id,))
     if row:
         data = json.loads(row["data"])
         data["status"] = status
-        conn.execute(
-            "UPDATE tourists SET data = ? WHERE tourist_id = ?",
+        _execute(
+            f"UPDATE tourists SET data = {p} WHERE tourist_id = {p}",
             (json.dumps(data), tourist_id),
         )
-        conn.commit()
+        _commit()
 
 
 # ---------------------------------------------------------------------------
@@ -177,18 +262,24 @@ def update_tourist_status(tourist_id: str, status: str):
 # ---------------------------------------------------------------------------
 def save_alert(alert_id: str, alert_data: dict):
     """Insert or update an alert record."""
-    conn = _get_conn()
-    conn.execute(
-        "INSERT OR REPLACE INTO alerts (alert_id, tourist_id, data) VALUES (?, ?, ?)",
-        (alert_id, alert_data.get("tourist_id", ""), json.dumps(alert_data)),
-    )
-    conn.commit()
+    p = _placeholder()
+    if _is_postgres():
+        _execute(
+            f"INSERT INTO alerts (alert_id, tourist_id, data) VALUES ({p}, {p}, {p}) "
+            f"ON CONFLICT (alert_id) DO UPDATE SET data = EXCLUDED.data",
+            (alert_id, alert_data.get("tourist_id", ""), json.dumps(alert_data)),
+        )
+    else:
+        _execute(
+            f"INSERT OR REPLACE INTO alerts (alert_id, tourist_id, data) VALUES ({p}, {p}, {p})",
+            (alert_id, alert_data.get("tourist_id", ""), json.dumps(alert_data)),
+        )
+    _commit()
 
 
 def load_all_alerts() -> dict[str, dict]:
     """Load all alerts into a dict keyed by alert_id."""
-    conn = _get_conn()
-    rows = conn.execute("SELECT alert_id, data FROM alerts").fetchall()
+    rows = _fetchall("SELECT alert_id, data FROM alerts")
     result = {}
     for row in rows:
         try:
@@ -200,11 +291,11 @@ def load_all_alerts() -> dict[str, dict]:
 
 def get_alerts_for_tourist(tourist_id: str) -> list[dict]:
     """Get all alerts for a specific tourist."""
-    conn = _get_conn()
-    rows = conn.execute(
-        "SELECT data FROM alerts WHERE tourist_id = ? ORDER BY created_at DESC",
+    p = _placeholder()
+    rows = _fetchall(
+        f"SELECT data FROM alerts WHERE tourist_id = {p} ORDER BY created_at DESC",
         (tourist_id,),
-    ).fetchall()
+    )
     return [json.loads(row["data"]) for row in rows]
 
 
@@ -215,23 +306,20 @@ def update_alert(alert_id: str, alert_data: dict):
 
 def clear_all_alerts():
     """Delete all alerts (demo reset)."""
-    conn = _get_conn()
-    conn.execute("DELETE FROM alerts")
-    conn.commit()
+    _execute("DELETE FROM alerts")
+    _commit()
 
 
 def get_tourist_count() -> int:
     """Get total number of registered tourists."""
-    conn = _get_conn()
-    row = conn.execute("SELECT COUNT(*) FROM tourists").fetchone()
-    return row[0]
+    row = _fetchone("SELECT COUNT(*) as cnt FROM tourists")
+    return row["cnt"] if row else 0
 
 
 def get_alert_count() -> int:
     """Get total number of alerts."""
-    conn = _get_conn()
-    row = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()
-    return row[0]
+    row = _fetchone("SELECT COUNT(*) as cnt FROM alerts")
+    return row["cnt"] if row else 0
 
 
 # ---------------------------------------------------------------------------
@@ -245,5 +333,6 @@ def startup():
     tourists = load_all_tourists()
     alerts = load_all_alerts()
 
-    print(f"[DB] Ready: {len(tourists)} tourists, {len(alerts)} alerts in SQLite.")
+    db_type = "PostgreSQL (Neon)" if _is_postgres() else "SQLite"
+    print(f"[DB] Ready on {db_type}: {len(tourists)} tourists, {len(alerts)} alerts.")
     return tourists, alerts
