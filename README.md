@@ -120,6 +120,19 @@ Sentrix comes pre-configured with geometric mapping for **12 real-world high-ris
 
 ---
 
+## 📈 Recent System Improvements (Based on Past Iterations)
+
+Our architecture and UX have significantly evolved based on rigorous testing and past feedback:
+1. **Persistent Cloud Database Migration:** Transitioned from a local ephemeral SQLite to a **Neon PostgreSQL** database to ensure zero data loss during cloud deployments on Render.
+2. **Rebranding to Sentrix:** A complete identity overhaul from "SafeYatra", establishing a premium, unified brand presence across the application.
+3. **Optimized Risk Engine Weights:** Re-balanced the Machine Learning Random Forest algorithm to prioritize environmental hazards (Altitude, Weather) over device metrics, making risk scores more realistic.
+4. **Resilient Offline SOS Logic:** Implemented the SMS Gateway and local storage queuing to handle actual dead zones more reliably.
+5. **CORS & Deployment Hardening:** Fixed severe frontend-to-backend CORS communication blocks, ensuring the live URL (`sentrix-frontend.onrender.com`) connects flawlessly to the API.
+6. **Premium Dark Mode & UI Polish:** Upgraded the command center and tourist app to feature modern, vibrant colors and high-contrast dark mode for better visibility.
+7. **Infrastructure as Code:** Automated the entire CI/CD pipeline via `render.yaml` to deploy both frontend and backend seamlessly.
+
+---
+
 ## 🛠️ Technical Stack
 
 | Category | Technology |
@@ -127,7 +140,7 @@ Sentrix comes pre-configured with geometric mapping for **12 real-world high-ris
 | **Frontend** | React 19, Vite, Tailwind CSS (Custom System) |
 | **Backend** | Python 3.10+, FastAPI, Uvicorn |
 | **Machine Learning** | scikit-learn (Random Forest Ensemble) |
-| **Database** | SQLite (WAL mode optimized) |
+| **Database** | Neon PostgreSQL (Cloud) & SQLite (Local Fallback) |
 | **Mapping & Live Data** | Leaflet.js, OpenWeatherMap API |
 | **Real-time Comms** | WebSockets (Bi-directional) |
 
