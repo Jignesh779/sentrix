@@ -13,6 +13,7 @@ Demo: SHA-256 hash chain with proof-of-work (identical data model).
 import hashlib
 import json
 import time
+from datetime import datetime
 from typing import Optional
 
 
@@ -93,14 +94,29 @@ class SentrixBlockchain:
             "tourist_id": tourist_data.get("tourist_id"),
             "name": tourist_data.get("name"),
             "nationality": tourist_data.get("nationality"),
-            "id_type": tourist_data.get("id_type"),
             "id_hash": tourist_data.get("id_hash"),
-            "trip_start": tourist_data.get("trip_start"),
-            "trip_end": tourist_data.get("trip_end"),
             "timestamp": time.time(),
-            "note": "Hash stored on-chain. Raw ID never saved.",
+            "note": "Email hash stored on-chain. Raw email never saved.",
         }
         return self._add_block(block_data)
+
+    def record_document_link(self, tourist_id: str, document_type: str, document_hash: str) -> dict:
+        """Record voluntary document linking on the blockchain."""
+        block_data = {
+            "type": "document_linked",
+            "tourist_id": tourist_id,
+            "document_type": document_type,
+            "document_hash": document_hash,
+            "timestamp": datetime.now().isoformat(),
+            "note": "Tourist voluntarily linked identity document for enhanced verification"
+        }
+        block = self._add_block(block_data)
+        return {
+            "block_index": block.index,
+            "block_hash": block.hash,
+            "document_type": document_type,
+            "document_hash": document_hash
+        }
 
     def verify_digital_id(self, id_hash: str) -> dict:
         """Verify a Digital ID against the blockchain."""
@@ -116,7 +132,22 @@ class SentrixBlockchain:
                     "block_index": block.index,
                     "block_hash": block.hash,
                     "issued_at": block.data.get("timestamp"),
-                    "trip_end": block.data.get("trip_end"),
+                    "chain_valid": self.is_chain_valid(),
+                }
+        # Also check document_linked blocks by document_hash
+        for block in self.chain:
+            if (
+                block.data.get("type") == "document_linked"
+                and block.data.get("document_hash") == id_hash
+            ):
+                return {
+                    "verified": True,
+                    "tourist_id": block.data.get("tourist_id"),
+                    "block_index": block.index,
+                    "block_hash": block.hash,
+                    "issued_at": block.data.get("timestamp"),
+                    "document_linked": True,
+                    "document_type": block.data.get("document_type"),
                     "chain_valid": self.is_chain_valid(),
                 }
         return {"verified": False, "message": "Digital ID not found on chain"}

@@ -18,15 +18,15 @@ export default function LandingPage({ lang, onLangChange }) {
   const handleRecovery = (e) => {
     e.preventDefault();
     setRecoveryError('');
-    const savedId = localStorage.getItem('sentrix_id_number');
+    const savedEmail = localStorage.getItem('sentrix_email');
     const savedTourist = localStorage.getItem('sy_tourist');
 
-    if (!savedId || !savedTourist) {
+    if (!savedEmail || !savedTourist) {
       setRecoveryError('No registration found on this device. Please register again.');
       return;
     }
-    if (recoveryId.trim() !== savedId) {
-      setRecoveryError('ID number does not match. Double-check your Aadhaar or Passport number.');
+    if (recoveryId.trim().toLowerCase() !== savedEmail.toLowerCase()) {
+      setRecoveryError('Email does not match. Please check your email address.');
       return;
     }
     localStorage.setItem('sentrix_auto_login', 'true');
@@ -110,7 +110,7 @@ export default function LandingPage({ lang, onLangChange }) {
               <form onSubmit={handleRecovery} style={{ display: 'flex', gap: 8, animation: 'fadeIn 0.3s ease' }}>
                 <input
                   type="text"
-                  placeholder="Enter Passport / Aadhaar No."
+                  placeholder="Enter your email address"
                   className="sy-input"
                   value={recoveryId}
                   onChange={e => { setRecoveryId(e.target.value); setRecoveryError(''); }}

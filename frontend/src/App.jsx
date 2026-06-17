@@ -9,6 +9,7 @@ import SOSConfirmation from './pages/SOSConfirmation';
 import SOSHistory from './pages/SOSHistory';
 import Dashboard from './pages/Dashboard';
 import VerifyID from './pages/VerifyID';
+import ProfilePage from './pages/ProfilePage';
 
 import './index.css';
 
@@ -19,7 +20,7 @@ import './index.css';
 function migrateLocalStorage() {
   try {
     const migrations = {
-      'safeyatra_id_number': 'sentrix_id_number',
+      'safeyatra_id_number': 'sentrix_email',
       'safeyatra_auto_login': 'sentrix_auto_login'
     };
     for (const [oldKey, newKey] of Object.entries(migrations)) {
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="/tourist/register" element={<Registration lang={lang} onRegistered={setRegistrationData} />} />
         <Route path="/tourist/digital-id" element={<DigitalIDPage lang={lang} />} />
         <Route path="/tourist/travel" element={<TravelView lang={lang} />} />
+        <Route path="/tourist/profile" element={<ProfilePage lang={lang} />} />
         <Route path="/tourist/sos" element={<SOSConfirmation lang={lang} />} />
         <Route path="/tourist/sos-history" element={<SOSHistory lang={lang} />} />
         <Route path="/verify" element={<VerifyID />} />

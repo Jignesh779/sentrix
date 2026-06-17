@@ -3,6 +3,13 @@ import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { t } from '../i18n';
 
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return '***';
+  const [local, domain] = email.split('@');
+  if (local.length <= 2) return local[0] + '***@' + domain;
+  return local[0] + '***' + local.slice(-1) + '@' + domain;
+}
+
 export default function DigitalIDPage({ lang }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -53,9 +60,12 @@ export default function DigitalIDPage({ lang }) {
 
           {/* Tourist Info */}
           <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{tourist.name}</h2>
-          <p style={{ color: 'var(--sy-text-secondary)', fontSize: 14, marginBottom: 16 }}>
-            {tourist.nationality} — {tourist.id_type}
+          <p style={{ color: 'var(--sy-text-secondary)', fontSize: 14, marginBottom: 4 }}>
+            {maskEmail(localStorage.getItem('sentrix_email') || tourist.email)}
           </p>
+          {tourist.document_linked && (
+            <span className="sy-badge sy-badge-green" style={{ marginBottom: 12 }}>Enhanced ✅</span>
+          )}
 
           {/* Details Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, textAlign: 'left', marginBottom: 20 }}>
@@ -69,7 +79,7 @@ export default function DigitalIDPage({ lang }) {
             </div>
             <div>
               <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>{t('digitalId.validUntil', lang)}</span>
-              <p style={{ fontSize: 14, fontWeight: 600 }}>{tourist.trip_end}</p>
+              <p style={{ fontSize: 14, fontWeight: 600 }}>{tourist.trip_end || tourist.valid_until || '—'}</p>
             </div>
             <div>
               <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Block</span>
@@ -131,7 +141,16 @@ export default function DigitalIDPage({ lang }) {
           </button>
         </div>
 
-        <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--sy-text-muted)', marginTop: 12 }}>
+        <div style={{ textAlign: 'center', marginTop: 12 }}>
+          <span
+            style={{ fontSize: 13, fontWeight: 600, color: 'var(--sy-primary)', cursor: 'pointer' }}
+            onClick={() => navigate('/tourist/profile')}
+          >
+            👤 Profile
+          </span>
+        </div>
+
+        <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--sy-text-muted)', marginTop: 8 }}>
           {t('digitalId.scanAtCheckpoint', lang)}
         </p>
       </div>

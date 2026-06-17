@@ -64,7 +64,7 @@ export default function VerifyID() {
         {/* Search Card */}
         <form onSubmit={(e) => handleVerify(e)} className="sy-card" style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 20 }}>
           <div>
-            <label className="sy-label">Sentrix ID Hash</label>
+            <label className="sy-label">Sentrix Identity Hash</label>
             <input
               className="sy-input"
               value={idHash}
@@ -96,6 +96,13 @@ export default function VerifyID() {
               </div>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--sy-green)' }}>Identity Verified</h2>
               <p style={{ fontSize: 13, color: 'var(--sy-text-secondary)', marginTop: 2 }}>This tourist's identity is secured and validated on the Sentrix Blockchain.</p>
+              <div style={{ marginTop: 8 }}>
+                {result.tourist_data?.document_linked ? (
+                  <span className="sy-badge sy-badge-green">✅ Document Verified ({result.tourist_data.document_type || 'ID'})</span>
+                ) : (
+                  <span className="sy-badge sy-badge-blue">📧 Email Verified</span>
+                )}
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, textAlign: 'left' }}>
@@ -116,12 +123,12 @@ export default function VerifyID() {
                 <p style={{ fontSize: 15, fontWeight: 700 }}>#{result.block_index ?? 'N/A'}</p>
               </div>
               <div>
-                <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Trip Start</span>
-                <p style={{ fontSize: 14, fontWeight: 600 }}>{result.tourist_data?.trip_start || 'N/A'}</p>
+                <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Valid Until</span>
+                <p style={{ fontSize: 14, fontWeight: 600 }}>{result.tourist_data?.trip_end || result.tourist_data?.valid_until || 'N/A'}</p>
               </div>
               <div>
-                <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Trip End</span>
-                <p style={{ fontSize: 14, fontWeight: 600 }}>{result.tourist_data?.trip_end || 'N/A'}</p>
+                <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Status</span>
+                <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--sy-green)' }}>Active</p>
               </div>
               {/* Medical conditions — highlighted for checkpoint officers */}
               {result.tourist_data?.medical_conditions && (

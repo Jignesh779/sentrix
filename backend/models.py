@@ -15,20 +15,23 @@ from uuid import uuid4
 # ---------------------------------------------------------------------------
 class TouristRegistration(BaseModel):
     """Incoming registration from the Sentrix PWA."""
+    email: str = Field(..., min_length=5, description="Email address — primary identifier")
     name: str = Field(..., min_length=2, description="Full name")
     phone: str = Field(..., description="Phone with country code, e.g. +91...")
     emergency_contact: str = Field(..., description="Emergency contact phone number")
-    nationality: str = Field(default="Indian", description="'Indian' or country name")
-    id_type: str = Field(
-        default="Aadhaar",
-        description="Indian: Aadhaar | DL | VoterID  |  Foreign: Passport",
-    )
-    id_number: str = Field(..., description="ID number (will be hashed, never stored raw)")
+    nationality: Optional[str] = Field(None, description="Nationality (optional)")
+    id_type: Optional[str] = None
+    id_number: Optional[str] = None
     blood_group: Optional[str] = Field(default=None, description="e.g. O+, A-, B+")
     medical_conditions: Optional[str] = Field(default=None)
-    trip_start: str = Field(..., description="Trip start date ISO format YYYY-MM-DD")
-    trip_end: str = Field(..., description="Trip end date ISO format YYYY-MM-DD")
     language_pref: str = Field(default="en", description="en | hi | ta")
+
+
+class LinkDocumentRequest(BaseModel):
+    """Optional Tier-2: Link a government document for enhanced checkpoint verification."""
+    tourist_id: str = Field(..., description="Sentrix tourist ID (e.g. SY-A1B2)")
+    id_type: str = Field(..., description="Document type: Aadhaar | DL | Passport")
+    id_number: str = Field(..., description="Document number — will be hashed, never stored raw")
 
 
 class Tourist(BaseModel):
@@ -39,8 +42,9 @@ class Tourist(BaseModel):
     name: str
     phone: str
     emergency_contact: str
+    email: str = ""
     nationality: str = "Indian"
-    id_type: str = "Aadhaar"
+    id_type: Optional[str] = None
     id_hash: str = Field(
         default_factory=lambda: f"0x{uuid4().hex[:8].upper()}...{uuid4().hex[:4].upper()}"
     )
@@ -52,6 +56,9 @@ class Tourist(BaseModel):
     consent_gps: bool = True
     digital_id_hash: Optional[str] = None
     chain_block_index: Optional[int] = None
+    document_linked: bool = False
+    document_type: Optional[str] = None
+    document_hash: Optional[str] = None
     registered_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat() + "Z"
     )
@@ -67,7 +74,9 @@ class DigitalID(BaseModel):
     tourist_id: str
     name: str
     nationality: str
-    id_type: str
+    id_type: Optional[str] = None
+    email_masked: Optional[str] = None
+    document_linked: bool = False
     blood_group: Optional[str] = None
     issued_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat() + "Z"

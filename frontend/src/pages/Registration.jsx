@@ -7,44 +7,27 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export default function Registration({ lang, onRegistered }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  // Auto-fill trip months: current month and next month
-  const now = new Date();
-  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const nextMonth = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}`;
+  const [showOptional, setShowOptional] = useState(false);
   const [form, setForm] = useState({
-    name: '', phone: '', emergency_contact: '',
-    id_type: 'Aadhaar', id_number: '',
+    name: '', email: '', phone: '', emergency_contact: '',
     blood_group: '', medical_conditions: '',
-    trip_start: thisMonth, trip_end: nextMonth, language_pref: lang || 'en',
-    nationality: 'IND',
+    language_pref: lang || 'en',
+    nationality: '',
   });
 
-  const isIndian = form.nationality === 'IND';
-
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
-
-  const idTypes = isIndian
-    ? [{ value: 'Aadhaar', label: 'Aadhaar' }, { value: 'DL', label: 'Driving License' }]
-    : [{ value: 'Passport', label: 'Passport' }];
-
-  const countries = [
-    { code: 'IND', label: 'India (🇮🇳)' },
-    { code: 'USA', label: 'United States (🇺🇸)' },
-    { code: 'UK', label: 'United Kingdom (🇬🇧)' },
-    { code: 'CAN', label: 'Canada (🇨🇦)' },
-    { code: 'AUS', label: 'Australia (🇦🇺)' },
-    { code: 'DEU', label: 'Germany (🇩🇪)' },
-    { code: 'FRA', label: 'France (🇫🇷)' },
-    { code: 'JPN', label: 'Japan (🇯🇵)' },
-    { code: 'OTHER', label: 'Other Foreign National (🌍)' }
-  ];
 
   const [showOtp, setShowOtp] = useState(false);
   const [otpValue, setOtpValue] = useState('');
 
   const handlePreSubmit = (e) => {
     e.preventDefault();
+    // Validate email
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(form.email)) {
+      alert('Please enter a valid email address');
+      return;
+    }
     setShowOtp(true);
   };
 
@@ -56,15 +39,13 @@ export default function Registration({ lang, onRegistered }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
-          nationality: isIndian ? 'Indian' : form.nationality,
-          id_type: isIndian ? form.id_type : 'Passport',
         }),
       });
       const data = await res.json();
       
       // Keep session persistent across refresh
       localStorage.setItem('sy_tourist', JSON.stringify(data.tourist));
-      localStorage.setItem('sentrix_id_number', form.id_number);
+      localStorage.setItem('sentrix_email', form.email);
       localStorage.setItem('sentrix_auto_login', 'true');
 
       if (onRegistered) onRegistered(data);
@@ -84,29 +65,6 @@ export default function Registration({ lang, onRegistered }) {
       return;
     }
     executeRegistration();
-  };
-
-  // Dynamic Validation Rules
-  const phoneProps = isIndian
-    ? { pattern: "[0-9]{10}", maxLength: 10, title: "Phone number must be exactly 10 digits" }
-    : { type: "tel", title: "Enter a valid international phone number" };
-
-  const getIdProps = () => {
-    if (isIndian) {
-      if (form.id_type === 'Aadhaar') return { pattern: "[0-9]{12}", maxLength: 12, title: "Aadhaar must be exactly 12 digits" };
-      if (form.id_type === 'DL') return { pattern: "[A-Za-z0-9]{10,20}", title: "Enter a valid Driving License number" };
-    } else {
-      // Passport validation based on country
-      switch (form.nationality) {
-        case 'USA': return { pattern: "[0-9]{9}", maxLength: 9, title: "US Passport must be 9 digits" };
-        case 'UK': return { pattern: "[0-9]{9}", maxLength: 9, title: "UK Passport must be 9 digits" };
-        case 'CAN': return { pattern: "[A-Za-z]{2}[0-9]{6}", maxLength: 8, title: "Canadian Passport: 2 letters, 6 digits" };
-        case 'AUS': return { pattern: "[A-Za-z]{1}[0-9]{7}", maxLength: 8, title: "Australian Passport: 1 letter, 7 digits" };
-        case 'JPN': return { pattern: "[A-Za-z]{2}[0-9]{7}", maxLength: 9, title: "Japanese Passport: 2 letters, 7 digits" };
-        default: return { pattern: "[A-Za-z0-9]{6,15}", title: "Enter a valid Passport number (6-15 characters)" };
-      }
-    }
-    return {};
   };
 
   return (
@@ -131,101 +89,58 @@ export default function Registration({ lang, onRegistered }) {
         {/* Form */}
         <form onSubmit={handlePreSubmit} className="sy-card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           
+          {/* Email — first field */}
+          <div>
+            <label className="sy-label">{t('registration.email', lang)} *</label>
+            <input className="sy-input" type="email" required value={form.email} onChange={e => set('email', e.target.value)} placeholder={t('registration.emailPlaceholder', lang)} />
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label className="sy-label">Nationality *</label>
-              <select 
-                className="sy-select" 
-                required 
-                value={form.nationality} 
-                onChange={e => {
-                  const val = e.target.value;
-                  set('nationality', val);
-                  if (val !== 'IND') set('id_type', 'Passport');
-                  else set('id_type', 'Aadhaar');
-                }}
-              >
-                {countries.map(country => (
-                  <option key={country.code} value={country.code}>{country.label}</option>
-                ))}
-              </select>
-            </div>
             <div>
               <label className="sy-label">{t('registration.name', lang)} *</label>
-              <input className="sy-input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder={isIndian ? 'e.g. Rajesh Kumar' : 'e.g. John Doe'} />
+              <input className="sy-input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. John Doe" />
             </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label className="sy-label">{t('registration.phone', lang)} *</label>
-              <input className="sy-input" required value={form.phone} onChange={e => set('phone', e.target.value)} placeholder={isIndian ? '9876543210' : '+1 555 123 4567'} {...phoneProps} />
-            </div>
-            <div>
-              <label className="sy-label">{t('registration.emergencyContact', lang)} *</label>
-              <input className="sy-input" required value={form.emergency_contact} onChange={e => set('emergency_contact', e.target.value)} placeholder={isIndian ? '9876543211' : '+44 7700 900077'} {...phoneProps} />
+              <input className="sy-input" type="tel" required value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="e.g. +91 9876543210" />
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {!isIndian ? (
-              <div style={{ gridColumn: 'span 2' }}>
-                <label className="sy-label">Passport Number *</label>
-                <input className="sy-input" required value={form.id_number} onChange={e => set('id_number', e.target.value)} placeholder="Enter Passport No." {...getIdProps()} />
+          <div>
+            <label className="sy-label">{t('registration.emergencyContact', lang)} *</label>
+            <input className="sy-input" type="tel" required value={form.emergency_contact} onChange={e => set('emergency_contact', e.target.value)} placeholder="e.g. +91 9876543211" />
+          </div>
+
+          {/* Optional Details — Collapsible */}
+          <div style={{ marginTop: '1.2rem' }}>
+            <div 
+              onClick={() => setShowOptional(!showOptional)}
+              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--sy-text-secondary)', fontSize: '0.95rem' }}
+            >
+              <span style={{ transform: showOptional ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', display: 'inline-block' }}>▶</span>
+              {t('registration.optionalDetails', lang)}
+            </div>
+            {showOptional && (
+              <div style={{ marginTop: '0.8rem', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label className="sy-label">{t('registration.nationality', lang)}</label>
+                  <input className="sy-input" value={form.nationality} onChange={e => set('nationality', e.target.value)} placeholder="e.g. Indian, American" />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label className="sy-label">{t('registration.bloodGroup', lang)}</label>
+                    <select className="sy-select" value={form.blood_group} onChange={e => set('blood_group', e.target.value)}>
+                      <option value="">Select</option>
+                      {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map(bg => <option key={bg} value={bg}>{bg}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="sy-label">{t('registration.medicalConditions', lang)}</label>
+                    <input className="sy-input" value={form.medical_conditions} onChange={e => set('medical_conditions', e.target.value)} placeholder="e.g. Asthma" />
+                  </div>
+                </div>
               </div>
-            ) : (
-              <>
-                <div>
-                  <label className="sy-label">{t('registration.idType', lang)}</label>
-                  <select className="sy-select" value={form.id_type} onChange={e => set('id_type', e.target.value)}>
-                    {idTypes.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="sy-label">{t('registration.idNumber', lang)} *</label>
-                  <input className="sy-input" required value={form.id_number} onChange={e => set('id_number', e.target.value)} placeholder={form.id_type === 'Aadhaar' ? '12-digit Aadhaar' : 'DL Number'} {...getIdProps()} />
-                </div>
-              </>
             )}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label className="sy-label">{t('registration.tripStart', lang)} *</label>
-              <input
-                className="sy-input"
-                type="month"
-                required
-                value={form.trip_start}
-                min={thisMonth}
-                onChange={e => set('trip_start', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="sy-label">{t('registration.tripEnd', lang)} *</label>
-              <input
-                className="sy-input"
-                type="month"
-                required
-                value={form.trip_end}
-                min={form.trip_start || thisMonth}
-                onChange={e => set('trip_end', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label className="sy-label">{t('registration.bloodGroup', lang)}</label>
-              <select className="sy-select" value={form.blood_group} onChange={e => set('blood_group', e.target.value)}>
-                <option value="">Select</option>
-                {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map(bg => <option key={bg} value={bg}>{bg}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="sy-label">{t('registration.medicalConditions', lang)}</label>
-              <input className="sy-input" value={form.medical_conditions} onChange={e => set('medical_conditions', e.target.value)} placeholder="e.g. Asthma" />
-            </div>
           </div>
 
           {/* Consent */}
@@ -239,7 +154,7 @@ export default function Registration({ lang, onRegistered }) {
           </button>
 
           <span className="sy-data-label" style={{ alignSelf: 'center' }}>
-            ℹ️ ID number hashed. Raw number never stored.
+            ℹ️ Email hashed on blockchain. Never stored raw.
           </span>
         </form>
       </div>

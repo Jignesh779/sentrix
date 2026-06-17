@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from models import (
-    TouristRegistration, Tourist, DigitalID,
+    TouristRegistration, Tourist, DigitalID, LinkDocumentRequest,
     SOSRequest, Alert, DispatchRequest, ConsentUpdate,
 )
 from rule_engine import assess_risk
@@ -34,6 +34,7 @@ from geo_data import get_geofence_geojson
 from blockchain import sentrix_chain
 from i18n import get_supported_languages  # reserved for /api/languages endpoint
 import dead_mans_switch as dms
+from datetime import datetime, timedelta, date
 
 # ML Model metadata (Phase 2)
 try:
@@ -115,10 +116,7 @@ def rebuild_blockchain():
             "tourist_id": tourist.tourist_id,
             "name": tourist.name,
             "nationality": tourist.nationality,
-            "id_type": tourist.id_type,
             "id_hash": tourist.id_hash,
-            "trip_start": tourist.trip_start,
-            "trip_end": tourist.trip_end,
         })
         # Update the tourist's chain references to match the new block
         tourist.digital_id_hash = block.hash
@@ -220,25 +218,43 @@ async def root():
 
 
 # ---------------------------------------------------------------------------
+# Email masking helper
+# ---------------------------------------------------------------------------
+def mask_email(email: str) -> str:
+    """Mask an email address for privacy: j***n@example.com"""
+    if not email or '@' not in email:
+        return email
+    parts = email.split('@')
+    name = parts[0]
+    if len(name) > 2:
+        return name[0] + '***' + name[-1] + '@' + parts[1]
+    return name[0] + '***@' + parts[1]
+
+
+# ---------------------------------------------------------------------------
 # Stage 2: Tourist Registration
 # ---------------------------------------------------------------------------
 @app.post("/api/register")
 async def register_tourist(reg: TouristRegistration):
     """Register a tourist and issue a blockchain Digital ID."""
-    # Hash the ID number (never store raw)
-    id_hash = "0x" + hashlib.sha256(reg.id_number.encode()).hexdigest()[:12].upper()
+    # Hash the email (never store raw)
+    id_hash = "0x" + hashlib.sha256(reg.email.lower().strip().encode()).hexdigest()[:12].upper()
+
+    # Auto-set trip validity
+    trip_start = date.today().isoformat()
+    trip_end = (date.today() + timedelta(days=365)).isoformat()
 
     tourist = Tourist(
         name=reg.name,
         phone=reg.phone,
         emergency_contact=reg.emergency_contact,
-        nationality=reg.nationality,
-        id_type=reg.id_type,
+        email=reg.email,
+        nationality=reg.nationality or "Indian",
         id_hash=id_hash,
         blood_group=reg.blood_group,
         medical_conditions=reg.medical_conditions,
-        trip_start=reg.trip_start,
-        trip_end=reg.trip_end,
+        trip_start=trip_start,
+        trip_end=trip_end,
         language_pref=reg.language_pref,
         consent_gps=True,
     )
@@ -248,10 +264,7 @@ async def register_tourist(reg: TouristRegistration):
         "tourist_id": tourist.tourist_id,
         "name": tourist.name,
         "nationality": tourist.nationality,
-        "id_type": tourist.id_type,
         "id_hash": id_hash,
-        "trip_start": reg.trip_start,
-        "trip_end": reg.trip_end,
     })
 
     tourist.digital_id_hash = block.hash
@@ -262,14 +275,15 @@ async def register_tourist(reg: TouristRegistration):
     save_db()
 
     # Build QR payload
+    email_masked = mask_email(reg.email)
     qr_payload = json.dumps({
         "system": "Sentrix",
         "tourist_id": tourist.tourist_id,
         "name": tourist.name,
         "nationality": tourist.nationality,
-        "id_type": tourist.id_type,
+        "email_masked": email_masked,
         "blood_group": tourist.blood_group,
-        "valid_until": reg.trip_end,
+        "valid_until": trip_end,
         "chain_hash": block.hash[:16],
         "verify": f"/api/verify-id/{id_hash}",
     })
@@ -279,9 +293,9 @@ async def register_tourist(reg: TouristRegistration):
         tourist_id=tourist.tourist_id,
         name=tourist.name,
         nationality=tourist.nationality,
-        id_type=tourist.id_type,
+        email_masked=email_masked,
         blood_group=tourist.blood_group,
-        expires_at=reg.trip_end,
+        expires_at=trip_end,
         chain_block_index=block.index,
         qr_payload=qr_payload,
     )
@@ -293,9 +307,87 @@ async def register_tourist(reg: TouristRegistration):
         "blockchain": {
             "block_index": block.index,
             "block_hash": block.hash,
-            "note": "Hash stored on-chain. Raw ID never saved.",
+            "note": "Email hash stored on-chain. Raw email never saved.",
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Tier 2: Voluntary Document Linking
+# ---------------------------------------------------------------------------
+@app.post("/api/link-document")
+async def link_document(req: LinkDocumentRequest):
+    """Tier 2: Voluntarily link a government document for enhanced verification."""
+    tourist = tourists_store.get(req.tourist_id)
+    if not tourist:
+        raise HTTPException(status_code=404, detail="Tourist not found")
+
+    # Hash the document
+    doc_hash = "0x" + hashlib.sha256(req.id_number.encode()).hexdigest()[:12].upper()
+
+    # Record on blockchain
+    chain_result = sentrix_chain.record_document_link(
+        tourist_id=req.tourist_id,
+        document_type=req.id_type,
+        document_hash=doc_hash
+    )
+
+    # Update tourist record
+    tourist.document_linked = True
+    tourist.document_type = req.id_type
+    tourist.document_hash = doc_hash
+
+    # Persist
+    save_db()
+
+    return {
+        "status": "document_linked",
+        "document_type": req.id_type,
+        "document_hash": doc_hash,
+        "blockchain": chain_result
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tourist Profile
+# ---------------------------------------------------------------------------
+@app.get("/api/profile/{tourist_id}")
+async def get_profile(tourist_id: str):
+    """Get tourist profile with document linking status."""
+    tourist = tourists_store.get(tourist_id)
+    if not tourist:
+        raise HTTPException(status_code=404, detail="Tourist not found")
+
+    phone = tourist.phone or ""
+    return {
+        "tourist_id": tourist.tourist_id,
+        "name": tourist.name,
+        "email_masked": mask_email(tourist.email),
+        "phone_masked": phone[:3] + "***" + phone[-4:] if len(phone) > 7 else phone,
+        "nationality": tourist.nationality,
+        "blood_group": tourist.blood_group,
+        "medical_conditions": tourist.medical_conditions,
+        "trip_start": tourist.trip_start,
+        "trip_end": tourist.trip_end,
+        "document_linked": tourist.document_linked,
+        "document_type": tourist.document_type,
+        "registered_at": tourist.registered_at,
+        "status": tourist.status,
+    }
+
+
+@app.put("/api/profile/{tourist_id}/validity")
+async def update_validity(tourist_id: str, months: int = Query(..., ge=1, le=12)):
+    """Update the validity period of a tourist's Digital ID."""
+    tourist = tourists_store.get(tourist_id)
+    if not tourist:
+        raise HTTPException(status_code=404, detail="Tourist not found")
+
+    new_end = (datetime.now() + timedelta(days=months * 30)).strftime("%Y-%m-%d")
+    tourist.trip_end = new_end
+    save_db()
+
+    return {"status": "updated", "trip_end": new_end}
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +413,6 @@ async def get_digital_id(tourist_id: str):
     })
 
     # Check trip expiry
-    from datetime import date
     try:
         trip_end_date = date.fromisoformat(tourist.trip_end)
         is_valid = trip_end_date >= date.today()
@@ -335,6 +426,8 @@ async def get_digital_id(tourist_id: str):
         "name": tourist.name,
         "nationality": tourist.nationality,
         "id_type": tourist.id_type,
+        "email_masked": mask_email(tourist.email),
+        "document_linked": tourist.document_linked,
         "blood_group": tourist.blood_group,
         "id_hash": tourist.id_hash,
         "chain_block_index": tourist.chain_block_index,
@@ -723,27 +816,31 @@ async def get_registered_tourists():
 # ---------------------------------------------------------------------------
 DEMO_TOURISTS = [
     {
+        "email": "rajesh.kumar@gmail.com",
         "name": "Rajesh Kumar", "phone": "+919876543210", "emergency_contact": "+919876543211",
-        "nationality": "Indian", "id_type": "Aadhaar", "id_number": "9876-5432-1098",
-        "trip_start": "2026-04-12", "trip_end": "2026-05-15", "language_pref": "hi",
+        "nationality": "Indian",
+        "language_pref": "hi",
         "demo_lat": 32.3124, "demo_lon": 77.1234, "demo_battery": 12,
     },
     {
+        "email": "sarah.johnson@outlook.com",
         "name": "Sarah Johnson", "phone": "+14155551234", "emergency_contact": "+14155555678",
-        "nationality": "American", "id_type": "Passport", "id_number": "US-789456123",
-        "trip_start": "2026-04-12", "trip_end": "2026-05-20", "language_pref": "en",
+        "nationality": "American",
+        "language_pref": "en",
         "demo_lat": 15.5739, "demo_lon": 73.7413, "demo_battery": 34,
     },
     {
+        "email": "priya.sharma@yahoo.com",
         "name": "Priya Sharma", "phone": "+919012345678", "emergency_contact": "+919012345679",
-        "nationality": "Indian", "id_type": "DL", "id_number": "DL-1420110012345",
-        "trip_start": "2026-04-12", "trip_end": "2026-05-10", "language_pref": "en",
+        "nationality": "Indian",
+        "language_pref": "en",
         "demo_lat": 10.0889, "demo_lon": 77.0595, "demo_battery": 7,
     },
     {
+        "email": "takeshi.yamamoto@mail.jp",
         "name": "Takeshi Yamamoto", "phone": "+81901234567", "emergency_contact": "+81901234568",
-        "nationality": "Japanese", "id_type": "Passport", "id_number": "JP-TK7890456",
-        "trip_start": "2026-04-12", "trip_end": "2026-05-25", "language_pref": "en",
+        "nationality": "Japanese",
+        "language_pref": "en",
         "demo_lat": 26.1445, "demo_lon": 91.7362, "demo_battery": 22,
     },
 ]
@@ -760,11 +857,10 @@ async def trigger_demo():
 
     # Register
     reg = TouristRegistration(
+        email=demo["email"],
         name=demo["name"], phone=demo["phone"],
         emergency_contact=demo["emergency_contact"],
-        nationality=demo["nationality"], id_type=demo["id_type"],
-        id_number=demo["id_number"],
-        trip_start=demo["trip_start"], trip_end=demo["trip_end"],
+        nationality=demo["nationality"],
         language_pref=demo["language_pref"],
     )
     reg_result = await register_tourist(reg)

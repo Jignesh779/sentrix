@@ -111,6 +111,10 @@ def init_db():
             CREATE TABLE IF NOT EXISTS tourists (
                 tourist_id   TEXT PRIMARY KEY,
                 data         TEXT NOT NULL,
+                email        TEXT DEFAULT '',
+                document_linked INTEGER DEFAULT 0,
+                document_type TEXT DEFAULT NULL,
+                document_hash TEXT DEFAULT NULL,
                 created_at   TIMESTAMP DEFAULT NOW()
             );
         """)
@@ -130,6 +134,10 @@ def init_db():
             CREATE TABLE IF NOT EXISTS tourists (
                 tourist_id   TEXT PRIMARY KEY,
                 data         TEXT NOT NULL,
+                email        TEXT DEFAULT '',
+                document_linked INTEGER DEFAULT 0,
+                document_type TEXT DEFAULT NULL,
+                document_hash TEXT DEFAULT NULL,
                 created_at   TEXT DEFAULT (datetime('now'))
             );
 
@@ -142,6 +150,18 @@ def init_db():
 
             CREATE INDEX IF NOT EXISTS idx_alerts_tourist ON alerts(tourist_id);
         """)
+
+    # Schema migration — add new columns if table already existed without them
+    for col, coldef in [
+        ("email", "TEXT DEFAULT ''"),
+        ("document_linked", "INTEGER DEFAULT 0"),
+        ("document_type", "TEXT DEFAULT NULL"),
+        ("document_hash", "TEXT DEFAULT NULL"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE tourists ADD COLUMN {col} {coldef}")
+        except Exception:
+            pass  # Column already exists
 
     _commit()
     db_type = "PostgreSQL" if _is_postgres() else "SQLite"
@@ -208,27 +228,46 @@ def migrate_from_json():
 def save_tourist(tourist: Tourist):
     """Insert or update a tourist record."""
     p = _placeholder()
+    data_json = json.dumps(tourist.model_dump())
+    email = getattr(tourist, 'email', '')
+    doc_linked = 1 if getattr(tourist, 'document_linked', False) else 0
+    doc_type = getattr(tourist, 'document_type', None)
+    doc_hash = getattr(tourist, 'document_hash', None)
     if _is_postgres():
         _execute(
-            f"INSERT INTO tourists (tourist_id, data) VALUES ({p}, {p}) "
-            f"ON CONFLICT (tourist_id) DO UPDATE SET data = EXCLUDED.data",
-            (tourist.tourist_id, json.dumps(tourist.model_dump())),
+            f"INSERT INTO tourists (tourist_id, data, email, document_linked, document_type, document_hash) "
+            f"VALUES ({p}, {p}, {p}, {p}, {p}, {p}) "
+            f"ON CONFLICT (tourist_id) DO UPDATE SET data = EXCLUDED.data, "
+            f"email = EXCLUDED.email, document_linked = EXCLUDED.document_linked, "
+            f"document_type = EXCLUDED.document_type, document_hash = EXCLUDED.document_hash",
+            (tourist.tourist_id, data_json, email, doc_linked, doc_type, doc_hash),
         )
     else:
         _execute(
-            f"INSERT OR REPLACE INTO tourists (tourist_id, data) VALUES ({p}, {p})",
-            (tourist.tourist_id, json.dumps(tourist.model_dump())),
+            f"INSERT OR REPLACE INTO tourists (tourist_id, data, email, document_linked, document_type, document_hash) "
+            f"VALUES ({p}, {p}, {p}, {p}, {p}, {p})",
+            (tourist.tourist_id, data_json, email, doc_linked, doc_type, doc_hash),
         )
     _commit()
 
 
 def load_all_tourists() -> dict[str, Tourist]:
     """Load all tourists into a dict keyed by tourist_id."""
-    rows = _fetchall("SELECT tourist_id, data FROM tourists")
+    rows = _fetchall("SELECT tourist_id, data, email, document_linked, document_type, document_hash FROM tourists")
     result = {}
     for row in rows:
         try:
-            result[row["tourist_id"]] = Tourist(**json.loads(row["data"]))
+            tdata = json.loads(row["data"])
+            # Backward compatibility: merge column values if missing from JSON
+            if "email" not in tdata or not tdata["email"]:
+                tdata["email"] = row.get("email", "") or ""
+            if "document_linked" not in tdata:
+                tdata["document_linked"] = bool(row.get("document_linked", 0))
+            if "document_type" not in tdata:
+                tdata["document_type"] = row.get("document_type")
+            if "document_hash" not in tdata:
+                tdata["document_hash"] = row.get("document_hash")
+            result[row["tourist_id"]] = Tourist(**tdata)
         except Exception as e:
             print(f"[DB] Error loading tourist {row['tourist_id']}: {e}")
     return result
