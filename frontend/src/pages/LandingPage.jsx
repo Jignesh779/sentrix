@@ -15,22 +15,49 @@ export default function LandingPage({ lang, onLangChange }) {
     }
   }, [navigate]);
 
-  const handleRecovery = (e) => {
+  const handleRecovery = async (e) => {
     e.preventDefault();
     setRecoveryError('');
+
+    const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+    try {
+      // Try server-side login first (works from any device)
+      const res = await fetch(`${API}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: recoveryId.trim() }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Save session locally
+        localStorage.setItem('sy_tourist', JSON.stringify(data.tourist));
+        localStorage.setItem('sentrix_email', recoveryId.trim());
+        localStorage.setItem('sentrix_auto_login', 'true');
+        navigate('/tourist/travel', { state: { tourist: data.tourist } });
+        return;
+      }
+
+      if (res.status === 404) {
+        setRecoveryError('No account found with this email. Please register first.');
+        return;
+      }
+    } catch {
+      // Server unreachable — fall back to localStorage
+    }
+
+    // Fallback: check localStorage (offline recovery)
     const savedEmail = localStorage.getItem('sentrix_email');
     const savedTourist = localStorage.getItem('sy_tourist');
 
-    if (!savedEmail || !savedTourist) {
-      setRecoveryError('No registration found on this device. Please register again.');
+    if (savedEmail && savedTourist && recoveryId.trim().toLowerCase() === savedEmail.toLowerCase()) {
+      localStorage.setItem('sentrix_auto_login', 'true');
+      navigate('/tourist/travel', { state: { tourist: JSON.parse(savedTourist) } });
       return;
     }
-    if (recoveryId.trim().toLowerCase() !== savedEmail.toLowerCase()) {
-      setRecoveryError('Email does not match. Please check your email address.');
-      return;
-    }
-    localStorage.setItem('sentrix_auto_login', 'true');
-    navigate('/tourist/travel', { state: { tourist: JSON.parse(savedTourist) } });
+
+    setRecoveryError('No account found with this email. Please register first.');
   };
 
   const languages = [

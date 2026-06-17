@@ -236,10 +236,46 @@ def mask_email(email: str) -> str:
 # ---------------------------------------------------------------------------
 @app.post("/api/register")
 async def register_tourist(reg: TouristRegistration):
-    """Register a tourist and issue a blockchain Digital ID."""
+    """Register a tourist and issue a blockchain Digital ID.
+    If the email is already registered, returns the existing account."""
     # Hash the email (never store raw)
     id_hash = "0x" + hashlib.sha256(reg.email.lower().strip().encode()).hexdigest()[:12].upper()
 
+    # ── Duplicate check: if email already registered, return existing account ──
+    for existing in tourists_store.values():
+        if hasattr(existing, 'email') and existing.email.lower().strip() == reg.email.lower().strip():
+            email_masked = mask_email(existing.email)
+            qr_payload = json.dumps({
+                "system": "Sentrix",
+                "tourist_id": existing.tourist_id,
+                "name": existing.name,
+                "nationality": existing.nationality,
+                "email_masked": email_masked,
+                "blood_group": existing.blood_group,
+                "valid_until": existing.trip_end,
+                "chain_hash": (existing.digital_id_hash or "")[:16],
+                "verify": f"/api/verify-id/{existing.id_hash}",
+            })
+            digital_id = DigitalID(
+                id_hash=existing.id_hash,
+                tourist_id=existing.tourist_id,
+                name=existing.name,
+                nationality=existing.nationality,
+                email_masked=email_masked,
+                document_linked=existing.document_linked,
+                blood_group=existing.blood_group,
+                expires_at=existing.trip_end,
+                chain_block_index=existing.chain_block_index or 0,
+                qr_payload=qr_payload,
+            )
+            return {
+                "status": "existing_account",
+                "tourist": existing.model_dump(),
+                "digital_id": digital_id.model_dump(),
+                "message": "You are already registered. Welcome back!",
+            }
+
+    # ── New registration ──
     # Auto-set trip validity
     trip_start = date.today().isoformat()
     trip_end = (date.today() + timedelta(days=365)).isoformat()
@@ -310,6 +346,47 @@ async def register_tourist(reg: TouristRegistration):
             "note": "Email hash stored on-chain. Raw email never saved.",
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Session Recovery (Login by Email)
+# ---------------------------------------------------------------------------
+@app.post("/api/login")
+async def login_by_email(email: str = Body(..., embed=True)):
+    """Recover an existing session by email — works from any device."""
+    email_clean = email.lower().strip()
+    for tourist in tourists_store.values():
+        if hasattr(tourist, 'email') and tourist.email.lower().strip() == email_clean:
+            email_masked = mask_email(tourist.email)
+            qr_payload = json.dumps({
+                "system": "Sentrix",
+                "tourist_id": tourist.tourist_id,
+                "name": tourist.name,
+                "nationality": tourist.nationality,
+                "email_masked": email_masked,
+                "blood_group": tourist.blood_group,
+                "valid_until": tourist.trip_end,
+                "chain_hash": (tourist.digital_id_hash or "")[:16],
+                "verify": f"/api/verify-id/{tourist.id_hash}",
+            })
+            digital_id = DigitalID(
+                id_hash=tourist.id_hash,
+                tourist_id=tourist.tourist_id,
+                name=tourist.name,
+                nationality=tourist.nationality,
+                email_masked=email_masked,
+                document_linked=tourist.document_linked,
+                blood_group=tourist.blood_group,
+                expires_at=tourist.trip_end,
+                chain_block_index=tourist.chain_block_index or 0,
+                qr_payload=qr_payload,
+            )
+            return {
+                "status": "found",
+                "tourist": tourist.model_dump(),
+                "digital_id": digital_id.model_dump(),
+            }
+    raise HTTPException(status_code=404, detail="No account found with this email. Please register first.")
 
 
 # ---------------------------------------------------------------------------
