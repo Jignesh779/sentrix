@@ -607,30 +607,30 @@ export default function Dashboard() {
 
               {/* ── Behavioral AI Card ── */}
               {anomalyModel && (
-                <div className="sy-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div className="sy-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
-                      <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>🔍 Behavioral AI</h3>
-                      <span className="sy-data-label" style={{ background: '#fefce8', borderColor: '#fde68a', color: '#b45309' }}>Anomaly Detection Active</span>
+                      <h3 style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>🔍 Behavioral AI</h3>
+                      <span className="sy-data-label" style={{ background: '#fefce8', borderColor: '#fde68a', color: '#b45309', fontSize: 10 }}>Anomaly Detection Active</span>
                     </div>
                     <span className="sy-badge sy-badge-green">{anomalyModel.status || 'Active'}</span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-                    <div style={{ padding: '16px', background: '#f8fafc', borderRadius: 12, border: '1px solid var(--sy-border)' }}>
-                      <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Model Name</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--sy-text)' }}>{anomalyModel.model_name || anomalyModel.name || 'Isolation Forest'}</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+                    <div style={{ padding: '12px', background: '#f8fafc', borderRadius: 10, border: '1px solid var(--sy-border)' }}>
+                      <span style={{ fontSize: 10, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Model</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--sy-text)' }}>{anomalyModel.model_name || anomalyModel.name || 'Random Forest'}</span>
                     </div>
-                    <div style={{ padding: '16px', background: '#f8fafc', borderRadius: 12, border: '1px solid var(--sy-border)' }}>
-                      <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Feature Count</span>
-                      <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--sy-primary)' }}>{anomalyModel.feature_count || anomalyModel.features || '—'}</span>
+                    <div style={{ padding: '12px', background: '#f8fafc', borderRadius: 10, border: '1px solid var(--sy-border)' }}>
+                      <span style={{ fontSize: 10, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Features</span>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--sy-primary)' }}>{anomalyModel.feature_count || anomalyModel.features || '—'}</span>
                     </div>
-                    <div style={{ padding: '16px', background: '#f8fafc', borderRadius: 12, border: '1px solid var(--sy-border)' }}>
-                      <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Training Samples</span>
-                      <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--sy-blue)' }}>{(anomalyModel.training_samples || 0).toLocaleString()}</span>
+                    <div style={{ padding: '12px', background: '#f8fafc', borderRadius: 10, border: '1px solid var(--sy-border)' }}>
+                      <span style={{ fontSize: 10, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Samples</span>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--sy-blue)' }}>{(anomalyModel.training_samples || 0).toLocaleString()}</span>
                     </div>
-                    <div style={{ padding: '16px', background: '#f0fdf4', borderRadius: 12, border: '1px solid #bbf7d0' }}>
-                      <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Classification Accuracy</span>
-                      <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--sy-green)' }}>{anomalyModel.classification_accuracy ? `${(anomalyModel.classification_accuracy * 100).toFixed(1)}%` : anomalyModel.accuracy ? `${(anomalyModel.accuracy * 100).toFixed(1)}%` : '—'}</span>
+                    <div style={{ padding: '12px', background: '#f0fdf4', borderRadius: 10, border: '1px solid #bbf7d0' }}>
+                      <span style={{ fontSize: 10, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Accuracy</span>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--sy-green)' }}>{anomalyModel.classification_accuracy ? `${(anomalyModel.classification_accuracy * 100).toFixed(1)}%` : anomalyModel.accuracy ? `${(anomalyModel.accuracy * 100).toFixed(1)}%` : '—'}</span>
                     </div>
                   </div>
                 </div>

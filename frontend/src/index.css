@@ -52,27 +52,34 @@
   box-sizing: border-box;
 }
 
-/* ── Prevent sticky text selection on all UI elements ── */
+/* ── Prevent accidental text selection on interactive elements only ── */
 button, nav, header,
-h1, h2, h3, h4, h5, h6,
-label, span, p, li,
-.sy-card, .sy-btn, .sy-badge,
-.sy-stat, .sy-stat-value, .sy-stat-label,
-.sy-data-label, .sy-sidebar,
-[role="button"], [onClick] {
+.sy-btn, .sy-badge,
+.sy-sidebar,
+[role="button"] {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
 }
 
-/* ── Re-enable selection only where the user needs to copy text ── */
+/* ── All content text is selectable & copyable by default ── */
+h1, h2, h3, h4, h5, h6,
+label, span, p, li, td, th,
+.sy-card, .sy-stat, .sy-stat-value, .sy-stat-label,
+.sy-data-label, .sy-toast,
 input, textarea, select,
 .sy-copyable, code, pre, .font-mono {
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
   user-select: text;
+  cursor: text;
+}
+
+/* Buttons & badges keep pointer cursor */
+button, .sy-btn, .sy-badge, [role="button"] {
+  cursor: pointer;
 }
 
 body {
@@ -126,8 +133,6 @@ h1, h2, h3, h4, .sy-heading {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18), 0 1px 4px rgba(0, 0, 0, 0.1);
   animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  -webkit-user-select: none;
-  user-select: none;
 }
 
 @keyframes toast-in {
