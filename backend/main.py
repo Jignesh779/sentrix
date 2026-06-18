@@ -35,12 +35,27 @@ from blockchain import sentrix_chain
 from i18n import get_supported_languages  # reserved for /api/languages endpoint
 import dead_mans_switch as dms
 from datetime import datetime, timedelta, date
+from uuid import uuid4
 
 # ML Model metadata (Phase 2)
 try:
     from ml_model import get_model_metadata as get_ml_metadata
 except ImportError:
     get_ml_metadata = lambda: {"status": "unavailable"}
+
+# Anomaly Detection Engine (behavioral ML)
+try:
+    import anomaly_engine
+except ImportError:
+    anomaly_engine = None
+    print("[!] anomaly_engine not available")
+
+# PII Encryption
+try:
+    from crypto_utils import get_encryption_status as _get_enc_status, hash_pii
+except ImportError:
+    _get_enc_status = lambda: {"enabled": False}
+    hash_pii = lambda v: "0x" + hashlib.sha256(v.encode()).hexdigest()[:16].upper() if v else ""
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -172,8 +187,44 @@ async def lifespan(app: FastAPI):
     dms.set_sos_callback(dms_auto_sos)
     dms.start_monitor()
 
+    # Anomaly Detection Engine — behavioral ML monitor
+    if anomaly_engine:
+        async def anomaly_auto_alert(tourist_id, anomaly_type, anomaly_score, features):
+            """Fired by the anomaly engine when critical behavior detected."""
+            tourist = tourists_store.get(tourist_id)
+            if not tourist:
+                return
+            # Only auto-SOS for critical anomalies (GPS dropout with high score)
+            if anomaly_type == 'gps_dropout' and anomaly_score >= 70:
+                sos = SOSRequest(
+                    tourist_id=tourist_id,
+                    latitude=features.get('last_lat', 0),
+                    longitude=features.get('last_lon', 0),
+                    battery_level=features.get('last_battery', 50),
+                    triggered_via='anomaly_detection',
+                    location_source=f'Anomaly: {anomaly_type} (score: {anomaly_score})',
+                )
+                await receive_sos(sos)
+            else:
+                # Broadcast anomaly warning to authority dashboard
+                await authority_manager.broadcast(json.dumps({
+                    'type': 'anomaly_detected',
+                    'data': {
+                        'tourist_id': tourist_id,
+                        'tourist_name': tourist.name,
+                        'anomaly_type': anomaly_type,
+                        'anomaly_score': anomaly_score,
+                    },
+                }))
+
+        anomaly_engine.set_callback(anomaly_auto_alert)
+        anomaly_engine.start_monitor()
+        print("[+] Anomaly Detection Engine started.")
+
     yield
     dms.stop_monitor()
+    if anomaly_engine:
+        anomaly_engine.stop_monitor()
     print("[x] Sentrix Backend shutting down...")
 
 
@@ -541,7 +592,28 @@ async def get_risk_score(
     if tourist_id:
         dms.record_ping(tourist_id, lat, lon, battery)
 
-    return assess_risk(lat, lon, battery)
+    # Feed the Anomaly Engine with this location ping
+    anomalies = []
+    if tourist_id and anomaly_engine:
+        try:
+            anomalies = anomaly_engine.record_ping(tourist_id, lat, lon, battery)
+        except Exception as e:
+            print(f"[Anomaly] Error recording ping: {e}")
+
+    risk = assess_risk(lat, lon, battery)
+
+    # Add anomaly data to risk response
+    if anomalies:
+        risk['anomalies'] = anomalies
+        # Boost risk score if anomaly detected
+        anomaly_boost = max(a.get('anomaly_score', 0) for a in anomalies) * 0.25
+        risk['risk_score'] = min(100, risk.get('risk_score', 0) + anomaly_boost)
+        if risk['risk_score'] >= 71:
+            risk['risk_level'] = 'red'
+        elif risk['risk_score'] >= 41:
+            risk['risk_level'] = 'yellow'
+
+    return risk
 
 
 @app.get("/api/ml-model-info")
@@ -990,6 +1062,287 @@ async def dms_disarm(tourist_id: str):
     """Disarm the Dead Man's Switch (e.g., tourist is safely at hotel)."""
     dms.disarm_switch(tourist_id)
     return {"tourist_id": tourist_id, "armed": False}
+
+
+# ---------------------------------------------------------------------------
+# Anomaly Detection Endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/anomalies/{tourist_id}")
+async def get_anomalies(tourist_id: str):
+    """Get active behavioral anomalies for a specific tourist."""
+    if not anomaly_engine:
+        return {"anomalies": [], "engine": "unavailable"}
+    return {"tourist_id": tourist_id, "anomalies": anomaly_engine.get_anomalies(tourist_id)}
+
+
+@app.get("/api/anomalies")
+async def get_all_anomalies():
+    """Get all active anomalies across all tourists (for dashboard)."""
+    if not anomaly_engine:
+        return {"anomalies": [], "engine": "unavailable"}
+    return {"anomalies": anomaly_engine.get_all_active_anomalies()}
+
+
+@app.post("/api/anomalies/{tourist_id}/dismiss/{anomaly_type}")
+async def dismiss_anomaly(tourist_id: str, anomaly_type: str):
+    """Tourist dismissed an anomaly alert ('I'm Fine' button)."""
+    if anomaly_engine:
+        anomaly_engine.dismiss_anomaly(tourist_id, anomaly_type)
+    return {"status": "dismissed", "tourist_id": tourist_id, "anomaly_type": anomaly_type}
+
+
+@app.get("/api/anomaly-model-info")
+async def anomaly_model_info():
+    """Return anomaly ML model training metadata."""
+    if not anomaly_engine:
+        return {"status": "unavailable"}
+    return anomaly_engine.get_model_metadata()
+
+
+# ---------------------------------------------------------------------------
+# Profile Stats Endpoint
+# ---------------------------------------------------------------------------
+@app.get("/api/profile/{tourist_id}/stats")
+async def get_profile_stats(tourist_id: str):
+    """Get safety statistics for a tourist's profile page."""
+    tourist = tourists_store.get(tourist_id)
+    if not tourist:
+        raise HTTPException(status_code=404, detail="Tourist not found")
+
+    # Count SOS alerts for this tourist
+    sos_alerts = [a for a in alerts_store.values() if a.get('tourist_id') == tourist_id]
+    sos_count = len(sos_alerts)
+
+    # Count danger zone entries (from anomaly engine ping history)
+    danger_zone_entries = 0
+    avg_risk_score = 0
+    if anomaly_engine:
+        pings = anomaly_engine.get_anomalies(tourist_id)
+        # Approximate: each unique danger zone anomaly = 1 entry
+        danger_zone_entries = len([a for a in pings if a.get('anomaly_type') in ('stillness', 'night_remote')])
+
+    # Calculate verification tier
+    email = tourist.email
+    tier = 1  # Email verified (registered = email verified)
+    if tourist.phone:
+        tier = 2
+    if tourist.document_linked:
+        tier = 3
+
+    return {
+        "tourist_id": tourist_id,
+        "sos_count": sos_count,
+        "danger_zone_entries": danger_zone_entries,
+        "avg_risk_score": avg_risk_score,
+        "verification_tier": tier,
+        "total_incidents": sos_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+# E-FIR (Electronic First Information Report) Generation
+# ---------------------------------------------------------------------------
+efir_store: dict[str, dict] = {}
+
+
+@app.post("/api/efir/generate")
+async def generate_efir(alert_id: str = Body(..., embed=True)):
+    """Generate an E-FIR from an active alert — auto-fills from Digital ID + alert data."""
+    alert = alerts_store.get(alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    tourist_id = alert.get('tourist_id', '')
+    tourist = tourists_store.get(tourist_id)
+
+    # Get blockchain trail for evidence
+    trail = sentrix_chain.get_full_trail(alert_id)
+
+    efir_id = f"EFIR-{uuid4().hex[:8].upper()}"
+    efir_data = {
+        "efir_id": efir_id,
+        "alert_id": alert_id,
+        "status": "generated",
+        "generated_at": datetime.now().isoformat(),
+        # Tourist details
+        "complainant": {
+            "tourist_id": tourist_id,
+            "name": tourist.name if tourist else alert.get('tourist_name', 'Unknown'),
+            "nationality": tourist.nationality if tourist else alert.get('nationality', ''),
+            "blood_group": tourist.blood_group if tourist else '',
+            "medical_conditions": tourist.medical_conditions if tourist else '',
+            "phone_masked": (tourist.phone[:3] + '***' + tourist.phone[-2:]) if tourist and len(tourist.phone) > 5 else '',
+            "emergency_contact_masked": (tourist.emergency_contact[:3] + '***' + tourist.emergency_contact[-2:]) if tourist and len(tourist.emergency_contact) > 5 else '',
+            "document_type": tourist.document_type if tourist else None,
+            "document_hash": tourist.document_hash if tourist else None,
+        },
+        # Incident details
+        "incident": {
+            "type": "Missing Person" if alert.get('triggered_via') in ('dead_mans_switch', 'anomaly_detection') else "SOS Emergency",
+            "last_known_latitude": alert.get('latitude', 0),
+            "last_known_longitude": alert.get('longitude', 0),
+            "last_contact_time": alert.get('timestamp', ''),
+            "battery_at_last_contact": alert.get('battery_level', 0),
+            "trigger_method": alert.get('triggered_via', 'unknown'),
+            "risk_score": alert.get('risk_score', 0),
+            "severity": alert.get('severity', 'high'),
+        },
+        # Evidence
+        "evidence": {
+            "blockchain_trail_length": len(trail),
+            "blockchain_verified": len(trail) > 0,
+            "sos_layers": alert.get('sos_layers', []),
+        },
+        # Jurisdiction (auto-filled)
+        "jurisdiction": {
+            "police_station": "Auto-assigned based on GPS coordinates",
+            "district": "Auto-detected",
+            "state": "Auto-detected",
+        },
+        "cctns_reference": f"CCTNS-{uuid4().hex[:6].upper()}",
+    }
+
+    # Store E-FIR
+    efir_store[efir_id] = efir_data
+
+    # Record on blockchain
+    sentrix_chain.add_block({
+        "type": "efir_generated",
+        "efir_id": efir_id,
+        "alert_id": alert_id,
+        "tourist_id": tourist_id,
+    })
+
+    return efir_data
+
+
+@app.get("/api/efir/{efir_id}")
+async def get_efir(efir_id: str):
+    """Retrieve a generated E-FIR."""
+    efir = efir_store.get(efir_id)
+    if not efir:
+        raise HTTPException(status_code=404, detail="E-FIR not found")
+    return efir
+
+
+# ---------------------------------------------------------------------------
+# Tourist Locations (for Heat Map / Cluster Visualization)
+# ---------------------------------------------------------------------------
+@app.get("/api/tourist-locations")
+async def get_tourist_locations():
+    """Return latest GPS positions of all tourists with GPS consent.
+    Used by dashboard for heat map and cluster visualization.
+    Returns anonymized data: tourist_id + lat/lon only (no PII)."""
+    locations = []
+
+    # From anomaly engine's location ping buffer (most recent data)
+    if anomaly_engine and hasattr(anomaly_engine, '_ping_buffers'):
+        for tid, buffer in anomaly_engine._ping_buffers.items():
+            tourist = tourists_store.get(tid)
+            if tourist and tourist.consent_gps and len(buffer) > 0:
+                last_ping = buffer[-1]
+                locations.append({
+                    "tourist_id": tid,
+                    "latitude": last_ping.lat,
+                    "longitude": last_ping.lon,
+                    "last_seen": last_ping.timestamp,
+                    "risk_level": "green",  # Could be enriched with latest risk
+                })
+
+    # Fallback: from DMS activity store
+    if not locations:
+        from dead_mans_switch import _activity_store
+        for tid, activity in _activity_store.items():
+            tourist = tourists_store.get(tid)
+            if tourist and tourist.consent_gps and activity.last_lat != 0:
+                locations.append({
+                    "tourist_id": tid,
+                    "latitude": activity.last_lat,
+                    "longitude": activity.last_lon,
+                    "last_seen": activity.last_ping_time,
+                })
+
+    return {"locations": locations, "count": len(locations)}
+
+
+# ---------------------------------------------------------------------------
+# Encryption & Privacy (DPDP Compliance)
+# ---------------------------------------------------------------------------
+@app.get("/api/encryption-status")
+async def get_encryption_status():
+    """Return encryption configuration status for the profile page."""
+    return _get_enc_status()
+
+
+@app.post("/api/privacy/export/{tourist_id}")
+async def export_data(tourist_id: str):
+    """DPDP: Export all tourist data as JSON (right to data portability)."""
+    tourist = tourists_store.get(tourist_id)
+    if not tourist:
+        raise HTTPException(status_code=404, detail="Tourist not found")
+
+    # Gather all data for this tourist
+    sos_history = [a for a in alerts_store.values() if a.get('tourist_id') == tourist_id]
+    trail = sentrix_chain.get_full_trail(tourist_id)
+
+    return {
+        "export_type": "DPDP_DATA_PORTABILITY",
+        "generated_at": datetime.now().isoformat(),
+        "tourist_data": {
+            "tourist_id": tourist.tourist_id,
+            "name": tourist.name,
+            "email": tourist.email,
+            "phone": tourist.phone,
+            "emergency_contact": tourist.emergency_contact,
+            "nationality": tourist.nationality,
+            "blood_group": tourist.blood_group,
+            "medical_conditions": tourist.medical_conditions,
+            "trip_start": tourist.trip_start,
+            "trip_end": tourist.trip_end,
+            "consent_gps": tourist.consent_gps,
+            "registered_at": tourist.registered_at,
+        },
+        "document_verification": {
+            "linked": tourist.document_linked,
+            "type": tourist.document_type,
+            "hash": tourist.document_hash,
+        },
+        "sos_history": sos_history,
+        "blockchain_records": trail,
+        "dpdp_notice": "Exported under Digital Personal Data Protection Act, 2023. Section 11 — Right to access.",
+    }
+
+
+@app.post("/api/privacy/delete/{tourist_id}")
+async def delete_data(tourist_id: str):
+    """DPDP: Request data deletion (right to erasure)."""
+    tourist = tourists_store.get(tourist_id)
+    if not tourist:
+        raise HTTPException(status_code=404, detail="Tourist not found")
+
+    # Mark as deleted (don't actually remove — blockchain records are immutable)
+    tourist.status = "deletion_requested"
+    tourist.name = "[REDACTED]"
+    tourist.phone = "[REDACTED]"
+    tourist.email = "[REDACTED]"
+    tourist.emergency_contact = "[REDACTED]"
+    tourist.medical_conditions = None
+    tourist.consent_gps = False
+    save_db()
+
+    # Log on blockchain (immutable record of deletion request)
+    sentrix_chain.add_block({
+        "type": "data_deletion_request",
+        "tourist_id": tourist_id,
+        "timestamp": datetime.now().isoformat(),
+        "dpdp_section": "Section 12 — Right to erasure",
+    })
+
+    return {
+        "status": "deletion_scheduled",
+        "tourist_id": tourist_id,
+        "notice": "Your personal data will be erased within 48 hours as per DPDP Act 2023. Blockchain audit records are retained in anonymized form.",
+    }
 
 
 # ---------------------------------------------------------------------------

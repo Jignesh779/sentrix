@@ -713,6 +713,52 @@ export default function TravelView({ lang }) {
             </div>
           )}
 
+          {/* Anomaly Detection Toasts — from behavioral AI */}
+          {risk?.anomalies?.map((anomaly, idx) => {
+            if (anomaly.dismissed) return null;
+            const ANOMALY_STYLES = {
+              gps_dropout: { icon: '📡', bg: 'rgba(220, 38, 38, 0.95)', title: 'GPS Signal Lost', desc: 'Your location signal dropped unexpectedly. Are you okay?', color: 'white' },
+              stillness: { icon: '⏸️', bg: 'rgba(234, 88, 12, 0.95)', title: 'Prolonged Stillness Detected', desc: 'You\'ve been stationary for an extended period. Everything alright?', color: 'white' },
+              erratic_movement: { icon: '🔀', bg: 'rgba(217, 140, 44, 0.95)', title: 'Unusual Movement Pattern', desc: 'Erratic movement detected by our AI. Need assistance?', color: 'white' },
+              night_remote: { icon: '🌙', bg: 'rgba(99, 102, 241, 0.95)', title: 'Night Movement in Remote Area', desc: 'Moving at night far from city centers. Stay safe!', color: 'white' },
+            };
+            const style = ANOMALY_STYLES[anomaly.anomaly_type] || ANOMALY_STYLES.stillness;
+            return (
+              <div key={idx} className="sy-toast" style={{
+                background: style.bg, backdropFilter: 'blur(12px)',
+                color: style.color, pointerEvents: 'auto',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+              }}>
+                <span style={{ fontSize: 20, flexShrink: 0 }}>{style.icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 800, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                    🤖 AI Alert: {style.title}
+                  </p>
+                  <p style={{ fontSize: 11, opacity: 0.9, marginTop: 2, lineHeight: 1.4 }}>{style.desc}</p>
+                  <p style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>
+                    Confidence: {Math.round(anomaly.anomaly_score || 0)}%
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (tourist?.tourist_id) {
+                        fetch(`${API}/api/anomalies/${tourist.tourist_id}/dismiss/${anomaly.anomaly_type}`, { method: 'POST' });
+                      }
+                      // Optimistically remove from local state
+                      setRisk(prev => prev ? { ...prev, anomalies: prev.anomalies?.filter((_, i) => i !== idx) } : prev);
+                    }}
+                    style={{
+                      marginTop: 6, padding: '4px 14px', fontSize: 11, fontWeight: 700,
+                      borderRadius: 999, border: '1px solid rgba(255,255,255,0.5)',
+                      background: 'rgba(255,255,255,0.15)', color: 'white', cursor: 'pointer',
+                    }}
+                  >
+                    ✅ I'm Fine
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
         </div>
 
         <MapContainer

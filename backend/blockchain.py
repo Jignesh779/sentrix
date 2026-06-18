@@ -11,8 +11,8 @@ Demo: SHA-256 hash chain with proof-of-work (identical data model).
 """
 
 import hashlib
-import json
 import time
+import json
 from datetime import datetime
 from typing import Optional
 
@@ -89,14 +89,17 @@ class SentrixBlockchain:
 
     def issue_digital_id(self, tourist_data: dict) -> Block:
         """Record a new Digital ID issuance on the chain."""
+        # Hash name for on-chain storage — raw name never stored on blockchain
+        raw_name = tourist_data.get("name", "")
+        name_hash = "0x" + hashlib.sha256(raw_name.encode()).hexdigest()[:16].upper() if raw_name else ""
         block_data = {
             "type": "digital_id_issued",
             "tourist_id": tourist_data.get("tourist_id"),
-            "name": tourist_data.get("name"),
+            "name_hash": name_hash,
             "nationality": tourist_data.get("nationality"),
             "id_hash": tourist_data.get("id_hash"),
             "timestamp": time.time(),
-            "note": "Email hash stored on-chain. Raw email never saved.",
+            "note": "PII hashed on-chain. Raw name and email never stored.",
         }
         return self._add_block(block_data)
 
@@ -155,11 +158,14 @@ class SentrixBlockchain:
     # ── Stage 5: SOS Alert ──
 
     def add_sos_block(self, alert_data: dict) -> Block:
+        # Hash name for on-chain storage — raw PII never stored on blockchain
+        raw_name = alert_data.get("tourist_name", "")
+        name_hash = "0x" + hashlib.sha256(raw_name.encode()).hexdigest()[:16].upper() if raw_name else ""
         block_data = {
             "type": "sos_alert",
             "alert_id": alert_data.get("id"),
             "tourist_id": alert_data.get("tourist_id"),
-            "name": alert_data.get("tourist_name"),
+            "name_hash": name_hash,
             "latitude": alert_data.get("latitude"),
             "longitude": alert_data.get("longitude"),
             "severity": alert_data.get("severity"),

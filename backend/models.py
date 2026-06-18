@@ -24,13 +24,13 @@ class TouristRegistration(BaseModel):
     id_number: Optional[str] = None
     blood_group: Optional[str] = Field(default=None, description="e.g. O+, A-, B+")
     medical_conditions: Optional[str] = Field(default=None)
-    language_pref: str = Field(default="en", description="en | hi | ta")
+    language_pref: str = Field(default="en", description="en | hi | ta | te | bn | mr | gu | kn | ml | pa | or")
 
 
 class LinkDocumentRequest(BaseModel):
     """Optional Tier-2: Link a government document for enhanced checkpoint verification."""
     tourist_id: str = Field(..., description="Sentrix tourist ID (e.g. SY-A1B2)")
-    id_type: str = Field(..., description="Document type: Aadhaar | DL | Passport")
+    id_type: str = Field(..., description="Document type: Aadhaar | DL | Passport | Voter_ID | PAN")
     id_number: str = Field(..., description="Document number — will be hashed, never stored raw")
 
 

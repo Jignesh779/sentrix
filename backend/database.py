@@ -10,10 +10,23 @@ Tables:
 
 import json
 import os
+import hashlib
 from pathlib import Path
 from typing import Optional
 
 from models import Tourist
+
+# PII Encryption
+try:
+    from crypto_utils import encrypt_pii, decrypt_pii
+    _encryption_available = True
+except ImportError:
+    encrypt_pii = lambda x: x
+    decrypt_pii = lambda x: x
+    _encryption_available = False
+
+# PII fields that should be encrypted at rest
+_PII_FIELDS = ['name', 'phone', 'email', 'emergency_contact', 'medical_conditions']
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -226,10 +239,17 @@ def migrate_from_json():
 # Tourist CRUD
 # ---------------------------------------------------------------------------
 def save_tourist(tourist: Tourist):
-    """Insert or update a tourist record."""
+    """Insert or update a tourist record. Encrypts PII fields before storage."""
     p = _placeholder()
-    data_json = json.dumps(tourist.model_dump())
-    email = getattr(tourist, 'email', '')
+    # Encrypt PII fields before storing
+    data_dict = tourist.model_dump()
+    for field in _PII_FIELDS:
+        if field in data_dict and data_dict[field]:
+            data_dict[field] = encrypt_pii(str(data_dict[field]))
+    data_json = json.dumps(data_dict)
+    # Store email hash (for lookup) instead of plaintext email
+    email_raw = getattr(tourist, 'email', '')
+    email_hash = hashlib.sha256(email_raw.encode()).hexdigest()[:24] if email_raw else ''
     doc_linked = 1 if getattr(tourist, 'document_linked', False) else 0
     doc_type = getattr(tourist, 'document_type', None)
     doc_hash = getattr(tourist, 'document_hash', None)
@@ -240,24 +260,28 @@ def save_tourist(tourist: Tourist):
             f"ON CONFLICT (tourist_id) DO UPDATE SET data = EXCLUDED.data, "
             f"email = EXCLUDED.email, document_linked = EXCLUDED.document_linked, "
             f"document_type = EXCLUDED.document_type, document_hash = EXCLUDED.document_hash",
-            (tourist.tourist_id, data_json, email, doc_linked, doc_type, doc_hash),
+            (tourist.tourist_id, data_json, email_hash, doc_linked, doc_type, doc_hash),
         )
     else:
         _execute(
             f"INSERT OR REPLACE INTO tourists (tourist_id, data, email, document_linked, document_type, document_hash) "
             f"VALUES ({p}, {p}, {p}, {p}, {p}, {p})",
-            (tourist.tourist_id, data_json, email, doc_linked, doc_type, doc_hash),
+            (tourist.tourist_id, data_json, email_hash, doc_linked, doc_type, doc_hash),
         )
     _commit()
 
 
 def load_all_tourists() -> dict[str, Tourist]:
-    """Load all tourists into a dict keyed by tourist_id."""
+    """Load all tourists into a dict keyed by tourist_id. Decrypts PII fields."""
     rows = _fetchall("SELECT tourist_id, data, email, document_linked, document_type, document_hash FROM tourists")
     result = {}
     for row in rows:
         try:
             tdata = json.loads(row["data"])
+            # Decrypt PII fields after loading
+            for field in _PII_FIELDS:
+                if field in tdata and tdata[field]:
+                    tdata[field] = decrypt_pii(str(tdata[field]))
             # Backward compatibility: merge column values if missing from JSON
             if "email" not in tdata or not tdata["email"]:
                 tdata["email"] = row.get("email", "") or ""
@@ -274,11 +298,16 @@ def load_all_tourists() -> dict[str, Tourist]:
 
 
 def get_tourist(tourist_id: str) -> Optional[Tourist]:
-    """Get a single tourist by ID."""
+    """Get a single tourist by ID. Decrypts PII fields."""
     p = _placeholder()
     row = _fetchone(f"SELECT data FROM tourists WHERE tourist_id = {p}", (tourist_id,))
     if row:
-        return Tourist(**json.loads(row["data"]))
+        tdata = json.loads(row["data"])
+        # Decrypt PII fields
+        for field in _PII_FIELDS:
+            if field in tdata and tdata[field]:
+                tdata[field] = decrypt_pii(str(tdata[field]))
+        return Tourist(**tdata)
     return None
 
 

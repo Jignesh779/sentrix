@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -42,6 +42,19 @@ export default function Dashboard() {
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const reconnectDelayRef = useRef(1000);
+
+  // ── E-FIR Modal State ──
+  const [efirData, setEfirData] = useState(null);
+  const [efirLoading, setEfirLoading] = useState(null);
+  const [showEfirModal, setShowEfirModal] = useState(false);
+
+  // ── Heat Map & Tourist Locations State ──
+  const [touristLocations, setTouristLocations] = useState([]);
+  const [mapLayerToggles, setMapLayerToggles] = useState({ heatMap: true, touristPins: true, dangerZones: true });
+
+  // ── Anomaly State ──
+  const [anomalies, setAnomalies] = useState([]);
+  const [anomalyModel, setAnomalyModel] = useState(null);
 
   // ── WebSocket with auto-reconnect ──
   useEffect(() => {
@@ -105,6 +118,22 @@ export default function Dashboard() {
     fetch(`${API}/api/ml-model-info`).then(r => r.json()).then(setMlModel).catch(() => {});
   }, []);
 
+  // ── Fetch Anomaly Model metadata ──
+  useEffect(() => {
+    fetch(`${API}/api/anomaly-model-info`).then(r => r.json()).then(setAnomalyModel).catch(() => {});
+  }, []);
+
+  // ── Fetch Tourist Locations & Anomalies (every 30s) ──
+  useEffect(() => {
+    const fetchLocationsAndAnomalies = () => {
+      fetch(`${API}/api/tourist-locations`).then(r => r.json()).then(d => setTouristLocations(d.locations || d || [])).catch(() => {});
+      fetch(`${API}/api/anomalies`).then(r => r.json()).then(d => setAnomalies(d.anomalies || d || [])).catch(() => {});
+    };
+    fetchLocationsAndAnomalies();
+    const iv = setInterval(fetchLocationsAndAnomalies, 30000);
+    return () => clearInterval(iv);
+  }, []);
+
   // ── Refresh alerts on every tab switch ──
   const handleTabSwitch = (id) => {
     setTab(id);
@@ -142,6 +171,51 @@ export default function Dashboard() {
     const res = await fetch(`${API}/api/blockchain/trail/${alertId}`);
     const data = await res.json();
     setTrail(data.trail || []);
+  };
+
+  // ── E-FIR Generation ──
+  const generateEFIR = async (alertId) => {
+    setEfirLoading(alertId);
+    try {
+      const res = await fetch(`${API}/api/efir/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alert_id: alertId }),
+      });
+      const data = await res.json();
+      setEfirData(data);
+      setShowEfirModal(true);
+    } catch (err) {
+      console.error('E-FIR generation failed:', err);
+    } finally {
+      setEfirLoading(null);
+    }
+  };
+
+  // ── Heat Map Clustering Helper ──
+  const getClusteredLocations = (locations) => {
+    if (!locations || locations.length === 0) return [];
+    const clusters = [];
+    const used = new Set();
+    for (let i = 0; i < locations.length; i++) {
+      if (used.has(i)) continue;
+      const cluster = { lat: locations[i].latitude, lng: locations[i].longitude, count: 1, ids: [locations[i].tourist_id] };
+      used.add(i);
+      for (let j = i + 1; j < locations.length; j++) {
+        if (used.has(j)) continue;
+        const dLat = Math.abs(locations[j].latitude - cluster.lat);
+        const dLng = Math.abs(locations[j].longitude - cluster.lng);
+        if (dLat < 0.5 && dLng < 0.5) {
+          cluster.lat = (cluster.lat * cluster.count + locations[j].latitude) / (cluster.count + 1);
+          cluster.lng = (cluster.lng * cluster.count + locations[j].longitude) / (cluster.count + 1);
+          cluster.count++;
+          cluster.ids.push(locations[j].tourist_id);
+          used.add(j);
+        }
+      }
+      clusters.push(cluster);
+    }
+    return clusters;
   };
 
   const activeAlerts = alerts.filter(a => a.status !== 'resolved').sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0));
@@ -365,9 +439,38 @@ export default function Dashboard() {
               
               {/* Splendid Map Wrapper */}
               <div className="sy-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--sy-border)', background: 'var(--sy-surface)' }}>
-                  <h3 style={{ fontWeight: 700, fontSize: 16 }}>Live Strategic Map</h3>
-                  <span className="sy-data-label" style={{ marginTop: 6, background: '#f8fafc' }}>📡 Dispatch routed via ERSS-112 Intranet</span>
+                <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--sy-border)', background: 'var(--sy-surface)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <h3 style={{ fontWeight: 700, fontSize: 16 }}>Live Strategic Map</h3>
+                    <span className="sy-data-label" style={{ marginTop: 6, background: '#f8fafc' }}>📡 Dispatch routed via ERSS-112 Intranet</span>
+                  </div>
+                  {/* ── Map Layer Toggle Buttons ── */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {touristLocations.length > 0 && (
+                      <span className="sy-data-label" style={{ background: '#eff6ff', borderColor: '#bfdbfe', color: 'var(--sy-blue)', fontWeight: 700 }}>
+                        👤 {touristLocations.length} active tourists
+                      </span>
+                    )}
+                    {[
+                      { key: 'heatMap', label: 'Heat Map', icon: '🔥' },
+                      { key: 'touristPins', label: 'Tourist Pins', icon: '📍' },
+                      { key: 'dangerZones', label: 'Danger Zones', icon: '⚠️' },
+                    ].map(toggle => (
+                      <button
+                        key={toggle.key}
+                        onClick={() => setMapLayerToggles(prev => ({ ...prev, [toggle.key]: !prev[toggle.key] }))}
+                        style={{
+                          padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          border: mapLayerToggles[toggle.key] ? '2px solid var(--sy-primary)' : '1px solid var(--sy-border)',
+                          background: mapLayerToggles[toggle.key] ? 'var(--sy-primary-lighter)' : 'var(--sy-surface)',
+                          color: mapLayerToggles[toggle.key] ? 'var(--sy-primary-dark)' : 'var(--sy-text-secondary)',
+                          fontFamily: 'inherit', transition: 'all 0.2s',
+                        }}
+                      >
+                        {toggle.icon} {toggle.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div style={{ height: 500, width: '100%' }}>
                   <MapContainer center={[22.5, 78.5]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl={false} scrollWheelZoom={false}>
@@ -388,7 +491,45 @@ export default function Dashboard() {
                         </Popup>
                       </Marker>
                     ))}
-                    {zones.map((zone, i) => (
+                    {/* ── Tourist Location Pins ── */}
+                    {mapLayerToggles.touristPins && touristLocations.map((loc, i) => (
+                      <CircleMarker
+                        key={`tp-${i}`}
+                        center={[loc.latitude, loc.longitude]}
+                        radius={4}
+                        pathOptions={{ color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 0.8, weight: 1 }}
+                      >
+                        <Popup>
+                          <div style={{ fontSize: 12 }}>
+                            <strong>👤 {loc.tourist_id || loc.name || 'Tourist'}</strong>
+                            {loc.last_seen && <><br /><span style={{ color: '#666' }}>Last seen: {new Date(loc.last_seen).toLocaleString()}</span></>}
+                          </div>
+                        </Popup>
+                      </CircleMarker>
+                    ))}
+                    {/* ── Heat Map Clusters ── */}
+                    {mapLayerToggles.heatMap && getClusteredLocations(touristLocations).filter(c => c.count > 1).map((cluster, i) => (
+                      <Circle
+                        key={`hm-${i}`}
+                        center={[cluster.lat, cluster.lng]}
+                        radius={Math.min(cluster.count * 8000, 80000)}
+                        pathOptions={{
+                          color: cluster.count > 10 ? '#dc2626' : cluster.count > 5 ? '#ea580c' : '#f59e0b',
+                          fillColor: cluster.count > 10 ? '#dc2626' : cluster.count > 5 ? '#ea580c' : '#f59e0b',
+                          fillOpacity: Math.min(0.15 + cluster.count * 0.03, 0.5),
+                          weight: 1,
+                        }}
+                      >
+                        <Popup>
+                          <div style={{ fontSize: 12, textAlign: 'center' }}>
+                            <strong style={{ fontSize: 18 }}>{cluster.count}</strong><br />
+                            <span style={{ color: '#666' }}>tourists in this area</span>
+                          </div>
+                        </Popup>
+                      </Circle>
+                    ))}
+                    {/* ── Danger Zone Circles ── */}
+                    {mapLayerToggles.dangerZones && zones.map((zone, i) => (
                       <Circle
                         key={i}
                         center={[zone.geometry.coordinates[1], zone.geometry.coordinates[0]]}
@@ -464,6 +605,37 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* ── Behavioral AI Card ── */}
+              {anomalyModel && (
+                <div className="sy-card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>🔍 Behavioral AI</h3>
+                      <span className="sy-data-label" style={{ background: '#fefce8', borderColor: '#fde68a', color: '#b45309' }}>Anomaly Detection Active</span>
+                    </div>
+                    <span className="sy-badge sy-badge-green">{anomalyModel.status || 'Active'}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+                    <div style={{ padding: '16px', background: '#f8fafc', borderRadius: 12, border: '1px solid var(--sy-border)' }}>
+                      <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Model Name</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--sy-text)' }}>{anomalyModel.model_name || anomalyModel.name || 'Isolation Forest'}</span>
+                    </div>
+                    <div style={{ padding: '16px', background: '#f8fafc', borderRadius: 12, border: '1px solid var(--sy-border)' }}>
+                      <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Feature Count</span>
+                      <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--sy-primary)' }}>{anomalyModel.feature_count || anomalyModel.features || '—'}</span>
+                    </div>
+                    <div style={{ padding: '16px', background: '#f8fafc', borderRadius: 12, border: '1px solid var(--sy-border)' }}>
+                      <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Training Samples</span>
+                      <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--sy-blue)' }}>{(anomalyModel.training_samples || 0).toLocaleString()}</span>
+                    </div>
+                    <div style={{ padding: '16px', background: '#f0fdf4', borderRadius: 12, border: '1px solid #bbf7d0' }}>
+                      <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>Classification Accuracy</span>
+                      <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--sy-green)' }}>{anomalyModel.classification_accuracy ? `${(anomalyModel.classification_accuracy * 100).toFixed(1)}%` : anomalyModel.accuracy ? `${(anomalyModel.accuracy * 100).toFixed(1)}%` : '—'}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Operations Feed */}
               <div className="sy-card" style={{ display: 'flex', flexDirection: 'column', padding: '24px' }}>
                 <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 20 }}>Live Dispatch Feed</h3>
@@ -506,6 +678,12 @@ export default function Dashboard() {
                               disabled={!!dispatchingId}
                               onClick={() => resolveAlert(alert.id)}
                             >Clear</button>
+                            <button
+                              className="sy-btn sy-btn-outline"
+                              style={{ padding: '8px 14px', fontSize: 12, flex: 1, borderColor: '#6366f1', color: '#6366f1', opacity: efirLoading === alert.id ? 0.6 : 1 }}
+                              disabled={efirLoading === alert.id}
+                              onClick={() => generateEFIR(alert.id)}
+                            >{efirLoading === alert.id ? '⏳ Generating…' : '📝 File E-FIR'}</button>
                           </div>
                         )}
                       </div>
@@ -531,13 +709,51 @@ export default function Dashboard() {
         {/* ── Alerts Tab ── */}
         {tab === 'alerts' && (
           <div className="sy-fade-in">
-            {activeAlerts.length === 0 ? (
+            {/* ── Behavioral Anomalies Section ── */}
+            {anomalies.length > 0 && (
+              <div style={{ marginBottom: 32 }}>
+                <h3 style={{ fontWeight: 800, fontSize: 18, marginBottom: 16, color: '#b45309' }}>⚠️ Behavioral Anomalies</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+                  {anomalies.map((anomaly, i) => (
+                    <div key={`anom-${i}`} className="sy-card sy-fade-in" style={{ padding: 24, borderLeft: '4px solid var(--sy-yellow)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                        <div>
+                          <span className="sy-badge sy-badge-yellow" style={{ marginBottom: 6, display: 'inline-block' }}>
+                            {anomaly.anomaly_type || 'Anomaly'}
+                          </span>
+                          <p style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', marginTop: 4 }}>Tourist: <span style={{ fontFamily: 'monospace' }}>{anomaly.tourist_id}</span></p>
+                        </div>
+                        <div className="sy-risk-circle" style={{
+                          width: 48, height: 48, fontSize: 16,
+                          background: (anomaly.anomaly_score || 0) > 0.8 ? 'var(--sy-red)' : (anomaly.anomaly_score || 0) > 0.5 ? 'var(--sy-yellow)' : 'var(--sy-green)',
+                        }}>
+                          {((anomaly.anomaly_score || 0) * 100).toFixed(0)}
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid var(--sy-border)' }}>
+                          <span style={{ fontSize: 10, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block' }}>Score</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: (anomaly.anomaly_score || 0) > 0.8 ? 'var(--sy-red)' : 'var(--sy-text)' }}>{(anomaly.anomaly_score || 0).toFixed(3)}</span>
+                        </div>
+                        <div style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid var(--sy-border)' }}>
+                          <span style={{ fontSize: 10, color: 'var(--sy-text-muted)', fontWeight: 600, textTransform: 'uppercase', display: 'block' }}>Detected At</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--sy-text)' }}>{anomaly.detected_at ? new Date(anomaly.detected_at).toLocaleString() : '—'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── SOS Alerts Section ── */}
+            {activeAlerts.length === 0 && anomalies.length === 0 ? (
               <div className="sy-card" style={{ textAlign: 'center', padding: '64px 20px', borderStyle: 'dashed', borderWidth: 2 }}>
                 <span style={{ fontSize: 56 }}>🛡️</span>
                 <h3 style={{ fontSize: 20, fontWeight: 700, marginTop: 16 }}>All Clear</h3>
                 <p style={{ color: 'var(--sy-text-secondary)', marginTop: 4 }}>No emergency operations currently active in any sector.</p>
               </div>
-            ) : (
+            ) : activeAlerts.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {activeAlerts.map((alert, i) => (
                   <div key={i} className="sy-card sy-fade-in" style={{ padding: 32 }}>
@@ -611,6 +827,12 @@ export default function Dashboard() {
                       >🔗 View Chain Trail</button>
                       <button
                         className="sy-btn sy-btn-outline"
+                        style={{ flex: '1 1 auto', borderColor: '#6366f1', color: '#6366f1', opacity: efirLoading === alert.id ? 0.6 : 1, whiteSpace: 'nowrap', padding: '12px 8px', textAlign: 'center' }}
+                        disabled={efirLoading === alert.id}
+                        onClick={() => generateEFIR(alert.id)}
+                      >{efirLoading === alert.id ? '⏳ Generating…' : '📝 File E-FIR'}</button>
+                      <button
+                        className="sy-btn sy-btn-outline"
                         style={{ flex: '1 1 auto', borderColor: 'var(--sy-green)', color: 'var(--sy-green)', opacity: dispatchingId ? 0.6 : 1, whiteSpace: 'nowrap', padding: '12px 8px', textAlign: 'center' }}
                         disabled={!!dispatchingId}
                         onClick={() => resolveAlert(alert.id)}
@@ -619,7 +841,7 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         )}
 
@@ -700,6 +922,170 @@ export default function Dashboard() {
         {/* ── Tourists Tab ── */}
         {tab === 'tourists' && <TouristsTab />}
       </div>
+
+      {/* ── E-FIR Modal ── */}
+      {showEfirModal && efirData && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: 20,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowEfirModal(false); }}
+        >
+          <div
+            className="sy-card"
+            id="efir-printable"
+            style={{
+              maxWidth: 800, width: '100%', maxHeight: '90vh', overflowY: 'auto',
+              padding: 0, borderRadius: 16, background: '#fff',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+            }}
+          >
+            {/* ── E-FIR Header ── */}
+            <div style={{
+              padding: '28px 32px', borderBottom: '3px solid #1e3a5f',
+              background: 'linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%)', color: 'white',
+              borderRadius: '16px 16px 0 0',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 4 }}>📋 Electronic First Information Report</h2>
+                  <p style={{ fontSize: 12, opacity: 0.8, fontWeight: 500 }}>Government of India · Integrated Criminal Justice System</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{
+                    display: 'inline-block', padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                    background: efirData.status === 'filed' ? 'rgba(16,185,129,0.2)' : 'rgba(251,191,36,0.2)',
+                    color: efirData.status === 'filed' ? '#10b981' : '#fbbf24',
+                  }}>
+                    {(efirData.status || 'GENERATED').toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 24, marginTop: 16, flexWrap: 'wrap' }}>
+                <div><span style={{ fontSize: 10, opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>E-FIR ID</span><br /><strong style={{ fontFamily: 'monospace', fontSize: 14 }}>{efirData.efir_id || '—'}</strong></div>
+                <div><span style={{ fontSize: 10, opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>CCTNS Reference</span><br /><strong style={{ fontFamily: 'monospace', fontSize: 14 }}>{efirData.cctns_reference || efirData.cctns_ref || '—'}</strong></div>
+                <div><span style={{ fontSize: 10, opacity: 0.6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Generated</span><br /><strong style={{ fontSize: 13 }}>{efirData.generated_at ? new Date(efirData.generated_at).toLocaleString() : new Date().toLocaleString()}</strong></div>
+              </div>
+            </div>
+
+            {/* ── E-FIR Body ── */}
+            <div style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+              {/* Complainant Section */}
+              {efirData.complainant && (
+                <div>
+                  <h4 style={{ fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#1e3a5f', marginBottom: 12, borderBottom: '2px solid #e2e8f0', paddingBottom: 8 }}>Complainant Details</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                    {[
+                      { label: 'Name', value: efirData.complainant.name },
+                      { label: 'Tourist ID', value: efirData.complainant.tourist_id, mono: true },
+                      { label: 'Nationality', value: efirData.complainant.nationality },
+                      { label: 'Blood Group', value: efirData.complainant.blood_group },
+                      { label: 'Medical Conditions', value: efirData.complainant.medical_conditions || 'None' },
+                      { label: 'Phone', value: efirData.complainant.phone || efirData.complainant.phone_masked || '••••••••••' },
+                      { label: 'Emergency Contact', value: efirData.complainant.emergency_contact || efirData.complainant.emergency_contact_masked || '••••••••••' },
+                      { label: 'Document Type', value: efirData.complainant.document_type || efirData.complainant.id_type },
+                      { label: 'Document Hash', value: efirData.complainant.document_hash, mono: true },
+                    ].map((field, idx) => (
+                      <div key={idx} style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                        <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>{field.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: field.mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{field.value || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Incident Details Section */}
+              {efirData.incident && (
+                <div>
+                  <h4 style={{ fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#1e3a5f', marginBottom: 12, borderBottom: '2px solid #e2e8f0', paddingBottom: 8 }}>Incident Details</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                    {[
+                      { label: 'Incident Type', value: efirData.incident.type || efirData.incident.incident_type },
+                      { label: 'Last Known Lat', value: efirData.incident.latitude?.toFixed(6) || efirData.incident.last_lat },
+                      { label: 'Last Known Lng', value: efirData.incident.longitude?.toFixed(6) || efirData.incident.last_lng },
+                      { label: 'Last Contact', value: efirData.incident.last_contact ? new Date(efirData.incident.last_contact).toLocaleString() : '—' },
+                      { label: 'Battery Level', value: efirData.incident.battery_level != null ? `${efirData.incident.battery_level}%` : '—' },
+                      { label: 'Trigger Method', value: efirData.incident.trigger_method || efirData.incident.triggered_via },
+                      { label: 'Risk Score', value: efirData.incident.risk_score },
+                      { label: 'Severity', value: efirData.incident.severity },
+                    ].map((field, idx) => (
+                      <div key={idx} style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                        <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>{field.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{field.value || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Evidence Section */}
+              {efirData.evidence && (
+                <div>
+                  <h4 style={{ fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#1e3a5f', marginBottom: 12, borderBottom: '2px solid #e2e8f0', paddingBottom: 8 }}>Digital Evidence</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                    <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Blockchain Trail Length</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{efirData.evidence.blockchain_trail_length ?? efirData.evidence.trail_length ?? '—'}</span>
+                    </div>
+                    <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Verified</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: efirData.evidence.verified ? 'var(--sy-green)' : 'var(--sy-red)' }}>{efirData.evidence.verified ? '✅ Yes' : '❌ No'}</span>
+                    </div>
+                    <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>SOS Layers</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{efirData.evidence.sos_layers ?? '—'}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Jurisdiction Section */}
+              {efirData.jurisdiction && (
+                <div>
+                  <h4 style={{ fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#1e3a5f', marginBottom: 12, borderBottom: '2px solid #e2e8f0', paddingBottom: 8 }}>Jurisdiction</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                    <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Police Station</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{efirData.jurisdiction.police_station || '—'}</span>
+                    </div>
+                    <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>District</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{efirData.jurisdiction.district || '—'}</span>
+                    </div>
+                    <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>State</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{efirData.jurisdiction.state || '—'}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── E-FIR Footer Actions ── */}
+            <div style={{
+              padding: '20px 32px', borderTop: '1px solid #e2e8f0',
+              display: 'flex', justifyContent: 'flex-end', gap: 12,
+              background: '#f8fafc', borderRadius: '0 0 16px 16px',
+            }}>
+              <button
+                className="sy-btn sy-btn-outline"
+                style={{ padding: '10px 24px', fontSize: 14 }}
+                onClick={() => setShowEfirModal(false)}
+              >Close</button>
+              <button
+                className="sy-btn sy-btn-primary"
+                style={{ padding: '10px 24px', fontSize: 14, background: '#1e3a5f' }}
+                onClick={() => window.print()}
+              >🖨️ Print E-FIR</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -64,6 +64,14 @@ export default function LandingPage({ lang, onLangChange }) {
     { value: 'en', label: 'English' },
     { value: 'hi', label: 'हिंदी' },
     { value: 'ta', label: 'தமிழ்' },
+    { value: 'te', label: 'తెలుగు' },
+    { value: 'bn', label: 'বাংলা' },
+    { value: 'mr', label: 'मराठी' },
+    { value: 'gu', label: 'ગુજરાતી' },
+    { value: 'kn', label: 'ಕನ್ನಡ' },
+    { value: 'ml', label: 'മലയാളം' },
+    { value: 'pa', label: 'ਪੰਜਾਬੀ' },
+    { value: 'or', label: 'ଓଡ଼ିଆ' },
   ];
 
   return (

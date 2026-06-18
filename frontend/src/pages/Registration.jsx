@@ -17,8 +17,9 @@ export default function Registration({ lang, onRegistered }) {
 
   const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
-  const [showOtp, setShowOtp] = useState(false);
-  const [otpValue, setOtpValue] = useState('');
+  // Email verification modal state
+  const [showVerify, setShowVerify] = useState(false);
+  const [verifyCode, setVerifyCode] = useState('');
 
   const handlePreSubmit = (e) => {
     e.preventDefault();
@@ -28,7 +29,7 @@ export default function Registration({ lang, onRegistered }) {
       alert('Please enter a valid email address');
       return;
     }
-    setShowOtp(true);
+    setShowVerify(true);
   };
 
   const executeRegistration = async () => {
@@ -54,14 +55,14 @@ export default function Registration({ lang, onRegistered }) {
       alert('Registration failed: ' + err.message);
     } finally {
       setLoading(false);
-      setShowOtp(false);
+      setShowVerify(false);
     }
   };
 
-  const handleOtpVerify = (e) => {
+  const handleVerify = (e) => {
     e.preventDefault();
-    if (otpValue.length !== 6) {
-      alert("Please enter a valid 6-digit OTP");
+    if (verifyCode.length !== 6) {
+      alert("Please enter a valid 6-digit code");
       return;
     }
     executeRegistration();
@@ -89,10 +90,13 @@ export default function Registration({ lang, onRegistered }) {
         {/* Form */}
         <form onSubmit={handlePreSubmit} className="sy-card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           
-          {/* Email — first field */}
+          {/* Email — primary identifier */}
           <div>
             <label className="sy-label">{t('registration.email', lang)} *</label>
             <input className="sy-input" type="email" required value={form.email} onChange={e => set('email', e.target.value)} placeholder={t('registration.emailPlaceholder', lang)} />
+            <span style={{ fontSize: 11, color: 'var(--sy-text-muted)', marginTop: 4, display: 'block' }}>
+              Primary identifier — works universally for all tourists
+            </span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -101,8 +105,11 @@ export default function Registration({ lang, onRegistered }) {
               <input className="sy-input" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. John Doe" />
             </div>
             <div>
-              <label className="sy-label">{t('registration.phone', lang)} *</label>
-              <input className="sy-input" type="tel" required value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="e.g. +91 9876543210" />
+              <label className="sy-label">{t('registration.phone', lang)}</label>
+              <input className="sy-input" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="e.g. +91 9876543210" />
+              <span style={{ fontSize: 10, color: 'var(--sy-text-muted)', marginTop: 2, display: 'block' }}>
+                Optional — for emergency use only
+              </span>
             </div>
           </div>
 
@@ -159,8 +166,8 @@ export default function Registration({ lang, onRegistered }) {
         </form>
       </div>
 
-      {/* Anthropic-styled OTP Modal Overlay */}
-      {showOtp && (
+      {/* Email Verification Modal */}
+      {showVerify && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(26, 26, 26, 0.4)', backdropFilter: 'blur(4px)',
@@ -169,25 +176,31 @@ export default function Registration({ lang, onRegistered }) {
         }}>
           <div className="sy-fade-in sy-card" style={{ maxWidth: 440, width: '100%', padding: '32px' }}>
             <h3 style={{ fontSize: 20, fontWeight: 600, marginBottom: 12, color: 'var(--sy-text)' }}>
-              Verify Identity
+              ✉️ Verify Email
             </h3>
             
             <div style={{ background: 'var(--sy-bg)', padding: 16, borderRadius: 'var(--sy-radius-sm)', border: '1px solid var(--sy-border)', marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <span style={{ fontSize: 24 }}>🧪</span>
                 <div>
-                  <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--sy-primary)' }}>Demo Mode — No SMS Required</h4>
+                  <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--sy-primary)' }}>Demo Mode — No Email Required</h4>
                   <p style={{ fontSize: 13, color: 'var(--sy-text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
-                    In a live deployment, an OTP would be sent to <strong>{form.phone || 'your number'}</strong>.
-                    For this demo, simply enter any 6 digits to continue.
+                    In a live deployment, a verification code would be sent to <strong>{form.email || 'your email'}</strong>.
+                    For this demo, enter any 6 digits to continue.
                   </p>
                 </div>
               </div>
             </div>
 
-            <form onSubmit={handleOtpVerify} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Why email verification? */}
+            <div style={{ background: 'var(--sy-blue-light)', padding: 12, borderRadius: 'var(--sy-radius-sm)', border: '1px solid var(--sy-blue)', marginBottom: 16, fontSize: 12, color: 'var(--sy-text-secondary)', lineHeight: 1.5 }}>
+              <strong style={{ color: 'var(--sy-blue)' }}>Why email instead of phone OTP?</strong><br />
+              Foreign tourists' phone numbers may not work in India. Email verification works universally on WiFi or mobile data.
+            </div>
+
+            <form onSubmit={handleVerify} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
-                <label className="sy-label" style={{ textAlign: 'center' }}>Enter 6-Digit OTP</label>
+                <label className="sy-label" style={{ textAlign: 'center' }}>Enter 6-Digit Verification Code</label>
                 <input 
                   type="text" 
                   pattern="[0-9]{6}"
@@ -195,8 +208,8 @@ export default function Registration({ lang, onRegistered }) {
                   required
                   autoFocus
                   className="sy-input" 
-                  value={otpValue} 
-                  onChange={e => setOtpValue(e.target.value.replace(/\D/g, ''))} 
+                  value={verifyCode} 
+                  onChange={e => setVerifyCode(e.target.value.replace(/\D/g, ''))} 
                   placeholder="• • • • • •" 
                   style={{ fontSize: 24, letterSpacing: '0.5em', textAlign: 'center', padding: '16px' }}
                 />
@@ -205,7 +218,7 @@ export default function Registration({ lang, onRegistered }) {
               <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
                 <button 
                   type="button" 
-                  onClick={() => setShowOtp(false)} 
+                  onClick={() => setShowVerify(false)} 
                   className="sy-btn sy-btn-outline" 
                   style={{ flex: 1 }}
                 >
@@ -214,10 +227,10 @@ export default function Registration({ lang, onRegistered }) {
                 <button 
                   type="submit" 
                   className="sy-btn sy-btn-primary" 
-                  disabled={loading || otpValue.length !== 6} 
+                  disabled={loading || verifyCode.length !== 6} 
                   style={{ flex: 1 }}
                 >
-                  {loading ? 'Verifying...' : 'Verify & Generate ID'}
+                  {loading ? 'Verifying...' : '✉️ Verify & Generate ID'}
                 </button>
               </div>
             </form>
